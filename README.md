@@ -2,7 +2,10 @@
 
 Lokale Fitness-PWA für mich und die Familie. Holt jeden Fitnessstand ab – auch stark übergewichtige Einsteiger – mit kleinen Daily Challenges morgens und abends.
 
-## Starten
+## Online
+https://daloyice.github.io/aufwind/ (GitHub Pages aus `main` – jeder Push ist sofort live)
+
+## Starten (lokal)
 - Doppelklick auf `start.bat` (öffnet http://localhost:8080) – oder `npm start`
 - Im Browser über das Install-Symbol als App installieren
 - Tests: `npm test` · Browser-Smoke-Test: `node tools/smoke.mjs . <ausgabeordner>`
