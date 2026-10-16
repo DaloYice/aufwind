@@ -173,6 +173,13 @@ export const EXERCISES = [
     easier: 'In der Wohnung hin und her gehen, Pausen sind erlaubt.', harder: 'Zügiger gehen oder leichte Steigungen einbauen.',
   },
   {
+    id: 'langsamgehen', name: 'Langsam gehen (Erholung)', icon: '🐢', cat: 'ausdauer', pos: 'stehend', programOnly: true,
+    unit: 'sek', base: [60, 60, 60, 60, 60],
+    steps: ['Tempo deutlich herausnehmen, aber weitergehen.', 'Tief ein- und ausatmen, Schultern locker lassen.', 'Wenn nötig, kurz stehen bleiben – das ist in Ordnung.'],
+    tip: 'Die Erholungsphasen sind Teil des Trainings, kein Versagen.',
+    easier: 'Kurz stehen bleiben oder hinsetzen.', harder: 'Etwas zügiger erholen.',
+  },
+  {
     id: 'marschstehend', name: 'Marschieren auf der Stelle', icon: '🎶', cat: 'ausdauer', pos: 'stehend',
     unit: 'sek', base: [null, 45, 60, 90, 90],
     steps: ['Neben einen Stuhl stellen (zum Festhalten).', 'Auf der Stelle marschieren, Knie anheben.', 'Arme schwingen mit.'],
@@ -259,5 +266,5 @@ export const byId = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
 
 /** Übungen, die für ein Level verfügbar sind. */
 export function forLevel(level, cat) {
-  return EXERCISES.filter((e) => e.base[level - 1] != null && (!cat || e.cat === cat));
+  return EXERCISES.filter((e) => !e.programOnly && e.base[level - 1] != null && (!cat || e.cat === cat));
 }

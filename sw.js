@@ -1,10 +1,12 @@
 // Service Worker: Network-First für App-Dateien (immer aktuell), Cache als Offline-Fallback.
-const CACHE = 'aufwind-v1';
+const CACHE = 'aufwind-v2';
 const ASSETS = [
   './', './index.html', './css/app.css', './manifest.webmanifest', './icons/icon.svg',
   './js/app.js', './js/store.js', './js/player.js', './js/ui.js', './js/chart.js',
   './js/core/dates.js', './js/core/assessment.js', './js/core/challenges.js', './js/core/progress.js',
-  './js/data/exercises.js', './js/data/habits.js',
+  './js/data/exercises.js', './js/data/habits.js', './js/data/poses.js', './js/data/programs.js',
+  './js/core/week.js', './js/figure.js', './js/dashboard.js', './js/reminders.js',
+  './icons/icon-192.png', './icons/icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {
@@ -29,5 +31,16 @@ self.addEventListener('fetch', (e) => {
         return res;
       })
       .catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('./index.html'))),
+  );
+});
+
+// Klick auf eine Erinnerung öffnet bzw. fokussiert die App.
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const win = list.find((c) => c.url.startsWith(self.registration.scope));
+      return win ? win.focus() : self.clients.openWindow('./#/heute');
+    }),
   );
 });

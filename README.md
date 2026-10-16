@@ -8,17 +8,21 @@ https://aufwind-4er.pages.dev/ (Cloudflare Pages, Auto-Deploy bei Push auf `main
 ## Starten (lokal)
 - Doppelklick auf `start.bat` (öffnet http://localhost:8080) – oder `npm start`
 - Im Browser über das Install-Symbol als App installieren
-- Tests: `npm test` · Browser-Smoke-Test: `node tools/smoke.mjs . <ausgabeordner>`
+- Tests: `npm test` (läuft auch per GitHub Actions bei jedem Push)
+- Browser-Smoke-Test: `node tools/smoke.mjs . <ausgabeordner> [breite]` · Figuren-Vorschau: `tools/figures.html`
 
 ## Funktionen
-- Einstufungstest (Gehdauer, Aufstehen vom Stuhl, Treppen, Gelenke, Aktivität, BMI, Gesundheits-Check) → Level 1–5
-- Morgen- und Abend-Challenge, pro Tag stabil, Level- und Feedback-angepasst
-- Geführter Workout-Player mit Timer, Signaltönen, Sprachansage und Wake-Lock
-- Übungsbibliothek (33 Übungen) mit Anleitung, Tipp, leichter/schwerer Variante
-- Gewohnheit des Tages (Ernährung/Alltag), „Wusstest du?“-Tipps
-- Serie mit Joker (1 verpasster Tag/Woche), 19 Abzeichen, Level-Auf-/Abstiegs-Vorschlag
-- Fortschritt: Gewicht, Bauch, Hüfte, Schritte mit Diagramm; Wochenminuten vs. WHO-Ziel
-- Mehrere Profile, JSON-Sicherung, Kalender-Erinnerung (.ics)
+- **Einstieg für jeden:** Einstufungstest (Gehdauer, Aufstehen vom Stuhl, Treppen, Gelenke, Aktivität, BMI, Gesundheits-Check) → Level 1–5
+- **Motivation:** persönliches „Warum“, Wenn-dann-Plan („Nach dem Zähneputzen …“), Wochenziel mit Rückblick jeden Montag
+- **Daily Challenges** morgens und abends, pro Tag stabil, Level- und Feedback-angepasst
+- **Geführter Player** mit animierter Strichfigur, Timer, Signaltönen, Sprachansage und Wake-Lock
+- **Programme:** Geh-Start (8 Wo. → 15 Min am Stück), Gehen 30 (8 Wo. → 30 Min), Kraft-Basis (6 Wo.)
+- **Übungsbibliothek** (34 Übungen) mit Figur, Anleitung, Tipp, leichter/schwerer Variante
+- **Alltag:** Gewohnheit des Tages, Wasser-Zähler, „Wusstest du?“-Tipps
+- **Familie:** mehrere Profile, gemeinsame Familien-Challenge (Minuten pro Woche)
+- **Dashboard:** Kennzahlen, Wochenminuten mit WHO-Linie, Aktivitätskalender, Gewichtsverlauf, Schwerpunkte, starke Wochentage, Gefühl-Verteilung – mit Tooltips und Tabellenansicht
+- Serie mit Joker, 23 Abzeichen, Level-Vorschläge, Messwerte (Gewicht, Bauch, Hüfte, Schritte)
+- Erinnerungen per Benachrichtigung (solange die App offen ist) und als Kalender-Datei (.ics), JSON-Sicherung
 
 ## Technik
 Vanilla JS (ES-Module), kein Build-Step, keine Abhängigkeiten. Daten in `localStorage`. Service Worker (Network-First).

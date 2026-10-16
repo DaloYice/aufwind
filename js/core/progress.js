@@ -85,13 +85,17 @@ export const BADGES = [
   { id: 'minus-5', icon: '🎯', name: '−5 kg', desc: '5 kg leichter als zu Beginn', test: (p) => lost(p) >= 5 },
   { id: 'minus-10', icon: '🚀', name: '−10 kg', desc: '10 kg leichter als zu Beginn', test: (p) => lost(p) >= 10 },
   { id: 'bauch-5', icon: '📉', name: '−5 cm Bauch', desc: 'Bauchumfang 5 cm weniger', test: (p) => { const f = firstLast(p.logs?.waist); return f ? f[0] - f[1] >= 5 : false; } },
+  { id: 'wasser-7', icon: '💧', name: 'Gut gewässert', desc: 'An 7 Tagen das Trinkziel erreicht', test: (p) => Object.values(p.water || {}).filter((n) => n >= (p.waterGoal || 6)).length >= 7 },
+  { id: 'wochenziel', icon: '🎯', name: 'Wochenziel', desc: 'Ein Wochenziel erreicht', test: (p) => (p.weeksReached || 0) >= 1 },
+  { id: 'wochenziel-4', icon: '🗓️', name: 'Vier gute Wochen', desc: '4 Wochenziele erreicht', test: (p) => (p.weeksReached || 0) >= 4 },
+  { id: 'programm', icon: '🎓', name: 'Programm-Absolvent', desc: 'Ein Programm komplett abgeschlossen', test: (p) => (p.programsDone || []).length >= 1 },
   { id: 'aufstieg', icon: '⬆️', name: 'Aufsteiger', desc: 'Ein Level aufgestiegen', test: (p) => (p.levelHistory || []).some((h, i, a) => i > 0 && h.level > a[i - 1].level) },
 ];
 
 function hasDouble(p) {
   const by = {};
   for (const s of p.sessions) (by[s.date] ||= new Set()).add(s.slot);
-  return Object.values(by).some((set) => set.size >= 2);
+  return Object.values(by).some((set) => set.has('morning') && set.has('evening'));
 }
 
 function lost(p) {

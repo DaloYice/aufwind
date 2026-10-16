@@ -5,7 +5,21 @@ const KEY = 'aufwind:v1';
 const listeners = new Set();
 
 function empty() {
-  return { profiles: [], activeId: null, settings: { speech: true, sound: true } };
+  return { profiles: [], activeId: null, settings: { speech: true, sound: true, notify: false, familyGoal: null } };
+}
+
+/** Ergänzt Felder, die ältere Versionen noch nicht kannten. */
+export function migrate(p) {
+  p.water ||= {};
+  p.waterGoal ||= 6;
+  p.weekGoals ||= {};
+  p.weekReached ||= {};
+  p.weeksReached ||= 0;
+  p.programsDone ||= [];
+  p.plan ||= { morning: '', evening: '' };
+  p.why ??= '';
+  p.program ??= null;
+  return p;
 }
 
 let state = load();
@@ -13,7 +27,12 @@ let state = load();
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...empty(), ...JSON.parse(raw) };
+    if (raw) {
+      const data = { ...empty(), ...JSON.parse(raw) };
+      data.settings = { ...empty().settings, ...data.settings };
+      data.profiles.forEach(migrate);
+      return data;
+    }
   } catch {
     /* privater Modus o. Ä. – mit leerem Zustand weiter */
   }
@@ -33,7 +52,7 @@ export const getState = () => state;
 export const onChange = (fn) => listeners.add(fn);
 export const activeProfile = () => state.profiles.find((p) => p.id === state.activeId) || null;
 
-export function createProfile({ name, emoji, assessment, answers, level }) {
+export function createProfile({ name, emoji, assessment, answers, level, why = '', plan = { morning: '', evening: '' } }) {
   const today = toKey();
   const p = {
     id: Math.random().toString(36).slice(2, 10),
@@ -47,7 +66,9 @@ export function createProfile({ name, emoji, assessment, answers, level }) {
     logs: { weight: [], steps: [], waist: [], hip: [] },
     badges: {}, bestStreak: 0,
     reminders: { morning: '07:30', evening: '19:00' },
+    why, plan,
   };
+  migrate(p);
   if (answers?.weightKg) p.logs.weight.push({ date: today, value: answers.weightKg });
   state.profiles.push(p);
   state.activeId = p.id;
@@ -96,6 +117,6 @@ export function exportJSON() {
 export function importJSON(text) {
   const data = JSON.parse(text);
   if (data.app !== 'aufwind' || !Array.isArray(data.profiles)) throw new Error('Keine gültige Aufwind-Sicherung.');
-  state = { ...empty(), profiles: data.profiles, activeId: data.activeId, settings: data.settings || empty().settings };
+  state = { ...empty(), profiles: data.profiles.map(migrate), activeId: data.activeId, settings: { ...empty().settings, ...data.settings } };
   save();
 }

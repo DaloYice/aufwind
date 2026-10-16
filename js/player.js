@@ -1,6 +1,7 @@
 // Geführter Workout-Modus: Übung → Pause → nächste Übung, mit Timer, Ton und Sprachansage.
 import { byId, CATEGORIES } from './data/exercises.js';
 import { esc, fmtAmount, fmtClock } from './ui.js';
+import { mountFigure, hasFigure } from './figure.js';
 
 let audioCtx;
 function beep(freq = 880, ms = 150) {
@@ -36,6 +37,8 @@ export function runPlayer(challenge, settings, onDone) {
   root.className = 'player';
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-modal', 'true');
+  root.tabIndex = -1;
+  const returnFocus = document.activeElement;
   document.body.appendChild(root);
 
   let wakeLock = null;
@@ -59,6 +62,7 @@ export function runPlayer(challenge, settings, onDone) {
     wakeLock?.release?.().catch(() => {});
     document.removeEventListener('visibilitychange', onVis);
     root.remove();
+    returnFocus?.focus?.();
   }
 
   function onVis() {
@@ -121,7 +125,7 @@ export function runPlayer(challenge, settings, onDone) {
       controls = `<button class="btn block" data-act="start">Los geht's</button>`;
     } else if (phase === 'work') {
       const timed = ex.unit === 'sek';
-      body = `<div class="ex-icon">${ex.icon}</div>
+      body = `${hasFigure(ex.id) ? '<div class="fig-stage" id="fig"></div>' : `<div class="ex-icon">${ex.icon}</div>`}
         <h1>${esc(ex.name)}</h1>
         <p class="muted">${CATEGORIES[ex.cat].label}${ex.perSide && timed ? ` · ${side === 1 ? 'erste' : 'zweite'} Seite` : ''}</p>
         ${timed ? ring(step.amount) : `<div class="count">${step.amount}×</div><p>${ex.perSide ? 'je Seite · ' : ''}in deinem Tempo</p>`}
@@ -150,6 +154,8 @@ export function runPlayer(challenge, settings, onDone) {
 
     root.innerHTML = `${phase === 'done' || phase === 'intro' ? `<div class="row"><button class="icon-btn" data-act="quit" aria-label="Schließen">✕</button></div>` : header()}
       <div class="player-body">${body}</div><div class="player-controls">${controls}</div>`;
+    const stage = root.querySelector('#fig');
+    if (stage && ex) mountFigure(stage, ex.id, { size: 220 });
   }
 
   function enterWork() {
@@ -174,7 +180,12 @@ export function runPlayer(challenge, settings, onDone) {
       return;
     }
     clearInterval(timer);
-    if (phase === 'work' && idx < steps.length - 1) {
+    if (phase === 'work' && idx < steps.length - 1 && !challenge.rest) {
+      // Intervall-Modus (Programme): direkt weiter ohne Pause
+      idx++;
+      sound(1320, 120);
+      enterWork();
+    } else if (phase === 'work' && idx < steps.length - 1) {
       phase = 'rest';
       paused = false;
       render();
@@ -217,4 +228,5 @@ export function runPlayer(challenge, settings, onDone) {
   });
 
   render();
+  root.querySelector('[data-act="start"]')?.focus();
 }

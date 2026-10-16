@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Figuren-Vorschau</title>
+<link rel="stylesheet" href="../css/app.css">
+<style>body{padding:16px} .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(640px,1fr));gap:8px} .c{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px;font-size:12px} .row{display:flex;gap:4px;flex-wrap:wrap} .row svg{width:150px;height:150px;background:var(--surface-2);border-radius:8px}</style>
+</head><body><h1>Figuren-Vorschau (alle Schlüsselposen)</h1><div class="g" id="g"></div>
+<script type="module">
+import { POSES } from '../js/data/poses.js';
+import { renderStatic } from '../js/figure.js';
+const g = document.getElementById('g');
+for (const [id, def] of Object.entries(POSES)) {
+  const c = document.createElement('div'); c.className = 'c'; c.innerHTML = `<b>${id}</b><div class="row"></div>`;
+  def.keys.forEach((_, i) => renderStatic(c.querySelector(".row"), id, i, 150));
+  g.appendChild(c);
+}
+</script></body></html>

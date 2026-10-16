@@ -14,7 +14,9 @@ export function toast(msg, ms = 2800) {
 }
 
 /** Bottom-Sheet öffnen; gibt das Sheet-Element zurück. */
+let sheetReturn = null;
 export function openSheet(html) {
+  if ($('#overlay').hidden) sheetReturn = document.activeElement;
   const ov = $('#overlay');
   ov.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`;
   ov.hidden = false;
@@ -27,6 +29,13 @@ export function openSheet(html) {
 
 function escClose(e) {
   if (e.key === 'Escape') closeSheet();
+  if (e.key === 'Tab') {
+    // Fokus im Dialog halten
+    const f = $$('button, a[href], input, select, textarea, summary', $('#overlay')).filter((x) => !x.disabled && x.offsetParent);
+    if (!f.length) return;
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f.at(-1).focus(); }
+    else if (!e.shiftKey && document.activeElement === f.at(-1)) { e.preventDefault(); f[0].focus(); }
+  }
 }
 
 export function closeSheet() {
@@ -34,6 +43,8 @@ export function closeSheet() {
   ov.hidden = true;
   ov.innerHTML = '';
   document.removeEventListener('keydown', escClose);
+  if (sheetReturn?.isConnected) sheetReturn.focus();
+  sheetReturn = null;
 }
 
 export function fmtAmount(ex, amount) {

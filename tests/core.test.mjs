@@ -174,3 +174,11 @@ test('Wochenminuten', () => {
   const p = prof(['2026-10-01', '2026-10-15', '2026-10-16']);
   assert.equal(weekMinutes(p, '2026-10-16'), 10);
 });
+
+test('Doppelpack nur für Morgen + Abend am selben Tag', () => {
+  const p = prof(['2026-10-16']);
+  p.sessions.push({ date: '2026-10-16', slot: 'program', durationSec: 300 });
+  assert.ok(!awardBadges(p, '2026-10-16').some((b) => b.id === 'doppelpack'));
+  p.sessions.push({ date: '2026-10-16', slot: 'evening', durationSec: 300 });
+  assert.ok(awardBadges(p, '2026-10-16').some((b) => b.id === 'doppelpack'));
+});
