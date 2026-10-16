@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Aufwind</title>
+  <meta name="description" content="Fitness für jeden Einstieg – kleine tägliche Challenges morgens und abends.">
+  <meta name="theme-color" content="#2f8f6f">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <main id="view" class="view" tabindex="-1"></main>
+  <nav id="tabbar" class="tabbar" hidden>
+    <a href="#/heute" data-tab="heute"><span aria-hidden="true">☀️</span>Heute</a>
+    <a href="#/uebungen" data-tab="uebungen"><span aria-hidden="true">📖</span>Übungen</a>
+    <a href="#/fortschritt" data-tab="fortschritt"><span aria-hidden="true">📈</span>Fortschritt</a>
+    <a href="#/profil" data-tab="profil"><span aria-hidden="true">👤</span>Profil</a>
+  </nav>
+  <div id="overlay" class="overlay" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
