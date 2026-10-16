@@ -2,6 +2,7 @@
 import { byId, CATEGORIES } from './data/exercises.js';
 import { esc, fmtAmount, fmtClock } from './ui.js';
 import { mountFigure, hasFigure } from './figure.js';
+import { confetti, haptic } from './confetti.js';
 
 let audioCtx;
 function beep(freq = 880, ms = 150) {
@@ -118,7 +119,7 @@ export function runPlayer(challenge, settings, onDone) {
     let controls = '';
 
     if (phase === 'intro') {
-      body = `<div class="ex-icon">${challenge.icon}</div><h1>${esc(challenge.title)}</h1>
+      body = `<div class="hero-emoji">${challenge.icon}</div><h1>${esc(challenge.title)}</h1>
         <p class="muted">${steps.length} Übungen · ca. ${challenge.minutes} Min</p>
         <div class="warn small" style="text-align:left">Bewege dich in deinem Tempo. Du solltest noch sprechen können.
         Bei Schmerzen, Brustenge oder Schwindel sofort aufhören.</div>`;
@@ -143,7 +144,7 @@ export function runPlayer(challenge, settings, onDone) {
       controls = `<button class="btn ghost" data-act="pause">${paused ? '▶ Weiter' : '⏸ Pause'}</button><button class="btn" data-act="skip">Weiter</button>`;
     } else if (phase === 'done') {
       const min = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
-      body = `<div class="ex-icon">🎉</div><h1>Geschafft!</h1><p>${min} Minute${min > 1 ? 'n' : ''} Bewegung – stark.</p>
+      body = `<div class="hero-emoji">🎉</div><h1>Geschafft!</h1><p>${min} Minute${min > 1 ? 'n' : ''} Bewegung – stark.</p>
         <p class="muted">Wie war's? Damit passen wir die nächsten Challenges an dich an.</p>
         <div class="feedback">
           <button class="btn soft" data-fb="leicht">😌 Zu leicht – gerne mehr</button>
@@ -198,6 +199,8 @@ export function runPlayer(challenge, settings, onDone) {
       idx = steps.length;
       phase = 'done';
       render();
+      confetti();
+      haptic(30);
       say('Geschafft! Super gemacht.', settings.speech);
     }
   }

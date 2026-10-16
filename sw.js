@@ -1,12 +1,14 @@
 // Service Worker: Network-First für App-Dateien (immer aktuell), Cache als Offline-Fallback.
-const CACHE = 'aufwind-v2';
+const CACHE = 'aufwind-v3';
 const ASSETS = [
   './', './index.html', './css/app.css', './manifest.webmanifest', './icons/icon.svg',
   './js/app.js', './js/store.js', './js/player.js', './js/ui.js', './js/chart.js',
   './js/core/dates.js', './js/core/assessment.js', './js/core/challenges.js', './js/core/progress.js',
   './js/data/exercises.js', './js/data/habits.js', './js/data/poses.js', './js/data/programs.js',
   './js/core/week.js', './js/figure.js', './js/dashboard.js', './js/reminders.js',
-  './icons/icon-192.png', './icons/icon-512.png',
+  './icons/icon-192.png', './icons/icon-512.png', './js/confetti.js',
+  './fonts/nunito-latin.woff2', './fonts/nunito-latin-ext.woff2',
+  './js/sync.js', './js/core/syncdata.js', './vendor/qrcode.js',
 ];
 
 self.addEventListener('install', (e) => {
@@ -22,7 +24,9 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  const url = new URL(e.request.url);
+  // Sync-API nie cachen
+  if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/api/')) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {

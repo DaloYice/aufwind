@@ -9,11 +9,14 @@ import { streak, adjustIntensity, levelSuggestion, awardBadges, BADGES } from '.
 import { weekStart, weekStats, weekGoal, reviewDue, suggestGoal, reviewMessage, familyProgress, defaultFamilyGoal } from './core/week.js';
 import { EXERCISES, CATEGORIES, POSITIONS, byId } from './data/exercises.js';
 import { PROGRAMS, programById, programState, programSession } from './data/programs.js';
-import { mountFigure, hasFigure } from './figure.js';
+import { mountFigure, hasFigure, renderStatic } from './figure.js';
+import { confetti, haptic } from './confetti.js';
+import { startSync, syncNow, syncCode, syncStatus, onSyncStatus, setupSync, joinSync, leaveSync, syncLink, qrSVG } from './sync.js';
+import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported } from './reminders.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung' };
 const view = $('#view');
 const tabbar = $('#tabbar');
@@ -30,15 +33,36 @@ const opts = (list, sel, empty = '— kein fester Zeitpunkt —') =>
 const routes = { heute: renderToday, uebungen: renderLibrary, fortschritt: renderProgress, profil: renderProfile, neu: renderOnboarding };
 
 function route() {
-  const name = location.hash.replace(/^#\/?/, '').split('/')[0] || 'heute';
+  const [name = 'heute', arg] = location.hash.replace(/^#\/?/, '').split('/');
+  if (name === 'sync') {
+    location.replace('#/heute'); // Code nicht im Verlauf stehen lassen
+    setTimeout(() => showJoin(arg), 50);
+    return;
+  }
   const p = store.activeProfile();
   if (!p && name !== 'neu') { location.hash = '#/neu'; return; }
   closeSheet();
   tabbar.hidden = name === 'neu';
   $$('a', tabbar).forEach((a) => a.classList.toggle('active', a.dataset.tab === name));
+  currentRoute = name;
   (routes[name] || renderToday)(p);
   window.scrollTo(0, 0);
 }
+let currentRoute = '';
+
+/** Nach einem Abgleich neu zeichnen – aber nie mitten in einer Eingabe, einem Dialog oder Workout. */
+let redrawPending = false;
+function onRemoteChange() {
+  const busyUI = document.querySelector('.player') || !$('#overlay').hidden || currentRoute === 'neu'
+    || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+  if (busyUI) { redrawPending = true; return; }
+  const y = scrollY;
+  const p = store.activeProfile();
+  if (!p) { location.hash = '#/neu'; return; }
+  (routes[currentRoute] || renderToday)(p);
+  scrollTo(0, y);
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (redrawPending && $('#overlay').hidden) { redrawPending = false; onRemoteChange(); } }, 300));
 window.addEventListener('hashchange', route);
 
 // ---------- Onboarding / Einstufung ----------
@@ -55,7 +79,7 @@ function renderOnboarding() {
     let canNext = true;
 
     if (s === 'welcome') {
-      html = `<div class="center" style="font-size:4rem">🌬️</div>
+      html = `<div class="welcome-stage" id="welcome-fig"></div>
         <h1 class="center">${isFirst ? 'Willkommen bei Aufwind' : 'Neues Profil'}</h1>
         <p>Aufwind holt dich genau da ab, wo du gerade stehst – egal, ob du gerade erst anfängst oder schon trainierst.</p>
         <div class="card stack">
@@ -63,7 +87,8 @@ function renderOnboarding() {
           <div class="row"><span style="font-size:1.6rem">🌙</span><span><b>Abends</b> eine kleine Einheit mit Entspannung</span></div>
           <div class="row"><span style="font-size:1.6rem">🥦</span><span><b>Täglich</b> eine kleine Alltags-Gewohnheit</span></div>
         </div>
-        <p class="muted small" style="margin-top:16px">Zuerst ein paar Fragen (2–3 Minuten), damit wir das richtige Startlevel finden. Alle Daten bleiben nur auf diesem Gerät.</p>`;
+        <p class="muted small" style="margin-top:16px">Zuerst ein paar Fragen (2–3 Minuten), damit wir das richtige Startlevel finden. Deine Daten bleiben auf deinen Geräten.</p>
+        ${isFirst ? '<button type="button" class="btn ghost block" id="join-existing">🔄 Schon auf einem anderen Gerät? Mit Code verbinden</button>' : ''}`;
     } else if (s === 'name') {
       html = `<h1>Wie sollen wir dich nennen?</h1>
         <label class="field"><span>Name</span><input type="text" id="f-name" value="${esc(data.name)}" maxlength="30" autocomplete="given-name"></label>
@@ -99,7 +124,7 @@ function renderOnboarding() {
       const r = assess(answers(data));
       data.result = r;
       const L = LEVELS[r.level - 1];
-      html = `<div class="center" style="font-size:3.5rem">🎯</div>
+      html = `<div class="hero-emoji">🎯</div>
         <h1 class="center">Dein Startlevel</h1>
         <div class="card center stack">
           <div><span class="level-badge" style="background:${L.color}">Level ${L.n} · ${esc(L.name)}</span></div>
@@ -135,6 +160,7 @@ function renderOnboarding() {
         location.hash = '#/heute';
         route();
         toast(`Willkommen, ${data.name.trim()}! 🎉`);
+        confetti();
         return;
       }
       i++;
@@ -163,6 +189,9 @@ function renderOnboarding() {
     $('#f-why')?.addEventListener('input', (e) => { data.whyText = e.target.value; });
     $('#f-pm')?.addEventListener('change', (e) => { data.plan.morning = e.target.value; });
     $('#f-pe')?.addEventListener('change', (e) => { data.plan.evening = e.target.value; });
+    $('#join-existing')?.addEventListener('click', () => showJoin());
+    const wf = $('#welcome-fig');
+    if (wf) mountFigure(wf, 'gehen', { size: 164 });
     view.querySelector('input[type=text], input[type=number]')?.focus();
   };
   draw();
@@ -204,55 +233,74 @@ function renderToday(p) {
     const c = challengeFor(slot, today, p);
     const d = done(slot);
     const names = [...new Set(c.steps.map((s) => s.id))].map((id) => `<span class="chip">${byId[id].icon} ${esc(byId[id].name)}</span>`).join('');
+    const figId = c.steps.find((x) => hasFigure(x.id) && byId[x.id].cat !== 'entspannung')?.id || c.steps[0].id;
     return `<section class="card hero ${slot} ${d ? 'done' : ''}">
-      <div class="row spread"><div><div class="small" style="opacity:.85">${slot === 'morning' ? 'Morgen-Challenge' : 'Abend-Challenge'}</div>
-      <h2 style="margin:0">${esc(c.title)}</h2>${p.plan?.[slot] ? `<div class="small" style="opacity:.85">📌 ${esc(p.plan[slot])}</div>` : ''}</div><div class="big-icon">${d ? '✅' : c.icon}</div></div>
+      <div class="hero-grid"><div><div class="eyebrow" style="color:inherit;opacity:.85">${slot === 'morning' ? '🌅 Morgen-Challenge' : '🌙 Abend-Challenge'}</div>
+        <h2 style="margin:4px 0 2px">${esc(c.title)}</h2>${p.plan?.[slot] ? `<div class="small" style="opacity:.9">📌 ${esc(p.plan[slot])}</div>` : ''}</div>
+        <div class="hero-fig" data-fig="${figId}">${d ? '<span class="done-badge" aria-label="erledigt">✓</span>' : ''}</div></div>
       <div class="chips">${names}</div>
-      <div class="row spread"><span>⏱ ca. ${c.minutes} Min${c.rounds > 1 ? ` · ${c.rounds} Runden` : ''}</span>
-      <button class="btn ${d ? 'light sm' : 'light'}" data-start="${slot}">${d ? 'Nochmal' : 'Starten'}</button></div>
+      <div class="card-foot"><span><b>⏱ ${c.minutes} Min</b>${c.rounds > 1 ? ` · ${c.rounds} Runden` : ''}</span>
+      <button class="btn ${d ? 'light sm' : 'light'}" data-start="${slot}">${d ? 'Nochmal' : "Los geht's"}</button></div>
     </section>`;
   };
 
+  const parts = [
+    { label: 'Morgen', on: !!done('morning'), color: 'var(--accent)' },
+    { label: 'Abend', on: !!done('evening'), color: 'var(--sky)' },
+    { label: 'Gewohnheit', on: habitDone, color: 'var(--primary)' },
+    { label: 'Trinken', on: (p.water[today] || 0) >= p.waterGoal, color: 'var(--water)' },
+  ];
+
   view.innerHTML = `
-    <header class="greet"><div><div class="muted small">${fromKey(today).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-      <h1 style="margin:0">${greet}, ${esc(p.name)}</h1></div><a class="avatar" href="#/profil" aria-label="Profil" style="text-decoration:none">${p.emoji || '🙂'}</a></header>
+    <header class="greet"><div><div class="eyebrow">${fromKey(today).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+      <h1>${greet}, ${esc(p.name)} 👋</h1></div><a class="avatar" href="#/profil" aria-label="Profil">${p.emoji || '🙂'}</a></header>
     <div class="stack">
-      <div class="streak"><span style="font-size:2rem">🔥</span><div style="flex:1">
-        <div><b class="big">${st.count}</b> ${st.count === 1 ? 'Tag' : 'Tage'} in Folge</div>
-        <div class="small muted">${st.jokerAvailable ? '🃏 Joker verfügbar – ein verpasster Tag pro Woche ist okay.' : '🃏 Joker diese Woche schon genutzt.'}</div>
+      <section class="card today-card">
+        <div class="today-top">
+          ${dayRing(parts)}
+          <div class="today-info">
+            <div class="streak-line"><span class="flame" aria-hidden="true">🔥</span><b class="big">${st.count}</b><span>${st.count === 1 ? 'Tag' : 'Tage'} in Folge</span></div>
+            <div class="small muted">${st.jokerAvailable ? '🃏 Joker frei – ein Pausentag pro Woche ist okay.' : '🃏 Joker diese Woche genutzt.'}</div>
+            <div class="small goal-line">🎯 Wochenziel: <b>${Math.min(wStats.activeDays, goal)} von ${goal}</b> Tagen${wStats.activeDays >= goal ? ` – geschafft! 🎉${wStats.activeDays > goal ? ` (+${wStats.activeDays - goal})` : ''}` : ''}</div>
+            <div class="goal-dots" aria-hidden="true">${Array.from({ length: goal }, (_, k) => `<i class="${k < wStats.activeDays ? 'on' : ''}"></i>`).join('')}</div>
+          </div>
+        </div>
+        <div class="ring-legend">${parts.map((x) => `<span class="${x.on ? 'on' : ''}"><i style="background:${x.color}"></i>${x.label}</span>`).join('')}</div>
         <div class="week">${week}</div>
-        <div class="small" style="margin-top:8px">🎯 Wochenziel: <b>${Math.min(wStats.activeDays, goal)} von ${goal}</b> Tagen${wStats.activeDays >= goal ? ` – geschafft! 🎉${wStats.activeDays > goal ? ` (+${wStats.activeDays - goal} extra)` : ''}` : ''}</div>
-        <div class="goal-dots" aria-hidden="true">${Array.from({ length: goal }, (_, k) => `<i class="${k < wStats.activeDays ? 'on' : ''}"></i>`).join('')}</div>
-      </div></div>
+      </section>
       ${review ? `<div class="banner row spread"><span><b>📊 Dein Wochenrückblick ist da</b><br><span class="small muted">Schau, was du letzte Woche geschafft hast.</span></span><button class="btn sm" id="review">Ansehen</button></div>` : ''}
       ${sugg === 'up' ? `<div class="banner"><b>⬆️ Bereit für mehr?</b><p class="small">Die Challenges fallen dir zuletzt leicht. Möchtest du auf Level ${p.level + 1} (${esc(LEVELS[p.level].name)}) wechseln?</p>
         <div class="row"><button class="btn sm" data-level="${p.level + 1}">Ja, Level ${p.level + 1}</button><button class="btn ghost sm" data-dismiss>Noch nicht</button></div></div>` : ''}
       ${sugg === 'down' ? `<div class="warn"><b>Etwas zu viel?</b><p class="small">Kein Problem – ein Schritt zurück ist auch ein Schritt. Auf Level ${p.level - 1} wechseln?</p>
         <div class="row"><button class="btn sm" data-level="${p.level - 1}">Ja, Level ${p.level - 1}</button><button class="btn ghost sm" data-dismiss>Nein, weiter so</button></div></div>` : ''}
-      ${p.why && !anyToday ? `<section class="banner"><span class="small muted">💚 Dein Warum</span><p style="margin:0"><b>${esc(p.why)}</b></p></section>` : ''}
+      ${p.why && !anyToday ? `<section class="why-card"><span class="tile-ico green">💚</span><div><div class="eyebrow">Dein Warum</div><b>${esc(p.why)}</b></div></section>` : ''}
       ${card('morning')}
       ${card('evening')}
       ${programCard(p, today)}
       <section class="card">
+        <div class="card-head"><span class="tile-ico green">${habit.icon}</span><div class="eyebrow">Gewohnheit des Tages</div></div>
         <label class="check"><input type="checkbox" id="habit" ${habitDone ? 'checked' : ''}>
-          <span><span class="small muted">Gewohnheit des Tages</span><br><b>${habit.icon} ${esc(habit.text)}</b><br><span class="small muted">${esc(habit.tip)}</span></span></label>
+          <span><b>${esc(habit.text)}</b><br><span class="small muted">${esc(habit.tip)}</span></span></label>
       </section>
       ${waterCard(p, today)}
       ${familyCard(p)}
       <button class="btn soft block" id="extra">➕ Andere Bewegung eintragen</button>
-      <section class="card"><div class="small muted">💡 Wusstest du?</div><p style="margin:0">${esc(tipOfDay(today))}</p></section>
+      <section class="card"><div class="card-head"><span class="tile-ico orange">💡</span><div class="eyebrow">Wusstest du?</div></div><p style="margin:0">${esc(tipOfDay(today))}</p></section>
       <p class="center small muted">Level ${p.level} · ${esc(L.name)} · Intensität ${Math.round(p.intensity * 100)} %</p>
     </div>`;
 
+  $$('[data-fig]').forEach((el) => renderStatic(el, el.dataset.fig, 1, 84));
   $$('[data-start]').forEach((b) => b.addEventListener('click', () => startChallenge(p, b.dataset.start)));
   $('#habit').addEventListener('change', (e) => {
-    if (e.target.checked) { p.habits[today] = habit.id; toast('Gut gemacht! 🌱'); } else delete p.habits[today];
+    if (e.target.checked) { p.habits[today] = habit.id; haptic(); toast('Gut gemacht! 🌱'); } else delete p.habits[today];
     finishUpdate(p);
+    renderToday(p);
   });
   $$('[data-water]').forEach((b) => b.addEventListener('click', () => {
     const n = Math.max(0, (p.water[today] || 0) + Number(b.dataset.water));
     p.water[today] = n;
-    if (n === p.waterGoal && Number(b.dataset.water) > 0) toast('💧 Trinkziel erreicht!');
+    haptic(8);
+    if (n === p.waterGoal && Number(b.dataset.water) > 0) { toast('💧 Trinkziel erreicht!'); confetti({ count: 50 }); }
     finishUpdate(p);
     renderToday(p);
   }));
@@ -273,17 +321,30 @@ function renderToday(p) {
   $('#extra').addEventListener('click', () => extraActivity(p));
 }
 
+/** Tagesring: vier Segmente (Morgen, Abend, Gewohnheit, Trinken). */
+function dayRing(parts) {
+  const r = 46, c = 2 * Math.PI * r, gap = 10, seg = c / parts.length - gap;
+  const done = parts.filter((x) => x.on).length;
+  const arcs = parts.map((x, i) => {
+    const off = -(i * (c / parts.length));
+    return `<circle class="seg-bg" cx="56" cy="56" r="${r}" stroke-dasharray="${seg} ${c - seg}" stroke-dashoffset="${off}"/>
+      ${x.on ? `<circle class="seg-on" cx="56" cy="56" r="${r}" stroke="${x.color}" stroke-dasharray="${seg} ${c - seg}" stroke-dashoffset="${off}"/>` : ''}`;
+  }).join('');
+  return `<div class="day-ring" role="img" aria-label="Heute ${done} von ${parts.length} erledigt: ${parts.map((x) => `${x.label} ${x.on ? 'erledigt' : 'offen'}`).join(', ')}">
+    <svg viewBox="0 0 112 112">${arcs}</svg><div class="center"><b>${done}/${parts.length}</b><span class="small muted">heute</span></div></div>`;
+}
+
 function programCard(p, today) {
   const st = programState(p.program);
   if (!st) {
-    return `<a class="card row" href="#/uebungen" style="text-decoration:none;color:inherit"><span style="font-size:1.8rem">🎓</span>
+    return `<a class="card row" href="#/uebungen" style="text-decoration:none;color:inherit"><span class="tile-ico violet">🎓</span>
       <span style="flex:1"><b>Programme entdecken</b><br><span class="small muted">Mit einem 6–8-Wochen-Plan ein klares Ziel erreichen – z. B. 30 Minuten am Stück gehen.</span></span><span aria-hidden="true">›</span></a>`;
   }
   const doneToday = p.sessions.some((s) => s.date === today && s.slot === 'program');
   const next = programSession(p.program);
   return `<section class="card prog-card">
-    <div class="row spread"><div><div class="small muted">Programm · Ziel: ${esc(st.prog.goal)}</div><h2 style="margin:0">${st.prog.icon} ${esc(st.prog.name)}</h2>
-      <div class="small">Woche ${st.week} von ${st.prog.weeks} · Einheit ${st.session} von 3</div></div></div>
+    <div class="card-head"><span class="tile-ico green">${st.prog.icon}</span><div><div class="eyebrow">Programm · ${esc(st.prog.goal)}</div><h3>${esc(st.prog.name)}</h3>
+      <div class="small muted">Woche ${st.week} von ${st.prog.weeks} · Einheit ${st.session} von 3</div></div></div>
     <div class="bar" style="margin:10px 0"><i style="width:${st.pct}%"></i></div>
     ${doneToday
       ? '<p class="small muted" style="margin:0">✅ Heute erledigt. Gönn dir bis zur nächsten Einheit einen Tag Pause – Erholung gehört zum Plan.</p>'
@@ -295,10 +356,10 @@ function waterCard(p, today) {
   const n = p.water[today] || 0;
   const goal = p.waterGoal;
   return `<section class="card">
-    <div class="row spread"><div><span class="small muted">Trinken</span><br><b>💧 ${n} von ${goal} Gläsern</b></div>
-      <div class="row"><button class="icon-btn" data-water="-1" aria-label="Ein Glas weniger">−</button>
-      <button class="icon-btn" data-water="1" aria-label="Ein Glas mehr" style="background:var(--primary);color:var(--primary-ink)">+</button></div></div>
-    <div class="glasses" aria-hidden="true" style="margin-top:8px">${Array.from({ length: Math.max(goal, n) }, (_, i) => `<span class="${i < n ? '' : 'off'}">🥛</span>`).join('')}</div>
+    <div class="row spread"><div class="row"><span class="tile-ico blue">💧</span><div><div class="eyebrow">Trinken</div><b>${n} von ${goal} Gläsern</b></div></div>
+      <div class="row" style="gap:8px"><button class="icon-btn" data-water="-1" aria-label="Ein Glas weniger">−</button>
+      <button class="icon-btn primary" data-water="1" aria-label="Ein Glas mehr">+</button></div></div>
+    <div class="glasses" aria-hidden="true">${Array.from({ length: Math.max(goal, n) }, (_, i) => `<span class="${i < n ? 'full' : 'off'}"></span>`).join('')}</div>
   </section>`;
 }
 
@@ -309,7 +370,7 @@ function familyCard() {
   const f = familyProgress(s.profiles, goal);
   const max = Math.max(1, ...f.members.map((m) => m.minutes));
   return `<section class="card">
-    <div class="row spread"><b>👨‍👩‍👧 Familien-Challenge</b><span class="small">${f.total} / ${f.goal} Min</span></div>
+    <div class="row"><span class="tile-ico orange">👨‍👩‍👧</span><div><div class="eyebrow">Familien-Challenge</div><b>${f.total} von ${f.goal} Min</b></div></div>
     <div class="bar" style="margin:8px 0"><i style="width:${f.pct}%"></i></div>
     ${f.members.map((m) => `<div class="member"><span>${m.emoji}</span><div><div class="small">${esc(m.name)}</div>
       <div class="bar" style="height:8px"><i style="width:${(m.minutes / max) * 100}%;opacity:.7"></i></div></div><span class="small">${m.minutes} Min</span></div>`).join('')}
@@ -361,7 +422,7 @@ function startProgramSession(p) {
     if (st.finished) {
       p.programsDone.push({ id: p.program.id, date: today });
       p.program = null;
-      setTimeout(() => toast(`🎓 Programm „${st.prog.name}“ abgeschlossen – großartig!`, 4000), 600);
+      setTimeout(() => { toast(`🎓 Programm „${st.prog.name}“ abgeschlossen – großartig!`, 4000); confetti({ count: 160, duration: 2600 }); }, 600);
     }
     finishUpdate(p);
     renderToday(p);
@@ -393,7 +454,7 @@ function finishUpdate(p) {
   if (!p.weekReached[ws] && weekStats(p, ws).reached) {
     p.weekReached[ws] = true;
     p.weeksReached++;
-    setTimeout(() => toast('🎯 Wochenziel erreicht – stark!', 3500), 900);
+    setTimeout(() => { toast('🎯 Wochenziel erreicht – stark!', 3500); confetti({ count: 120 }); }, 900);
   }
   const fresh = awardBadges(p);
   store.save();
@@ -650,6 +711,8 @@ function renderProfile(p) {
         <a class="btn ghost" href="#/neu">➕ Profil hinzufügen</a>
       </section>
 
+      ${syncSectionHTML()}
+
       <section class="card stack"><h2>Daten</h2>
         <p class="small muted" style="margin:0">Alles ist nur auf diesem Gerät gespeichert. Mach ab und zu eine Sicherung.</p>
         <button class="btn soft" id="export">⬇️ Sicherung exportieren</button>
@@ -688,8 +751,9 @@ function renderProfile(p) {
   $('#ics').addEventListener('click', () => { saveRem(); download('aufwind-erinnerungen.ics', buildICS(p), 'text/calendar'); });
   $('#set-speech').addEventListener('change', (e) => { s.settings.speech = e.target.checked; store.save(); });
   $('#set-sound').addEventListener('change', (e) => { s.settings.sound = e.target.checked; store.save(); });
-  $('#fam-goal')?.addEventListener('change', (e) => { const v = Number(e.target.value); if (v > 0) { s.settings.familyGoal = v; store.save(); toast('Familienziel gespeichert'); } });
+  $('#fam-goal')?.addEventListener('change', (e) => { const v = Number(e.target.value); if (v > 0) { s.settings.familyGoal = v; s.settings.familyGoalAt = new Date().toISOString(); store.save(); toast('Familienziel gespeichert'); } });
   $$('[data-switch]').forEach((b) => b.addEventListener('click', () => { store.switchProfile(b.dataset.switch); location.hash = '#/heute'; }));
+  bindSyncSection(p);
   $('#export').addEventListener('click', () => download(`aufwind-sicherung-${toKey()}.json`, store.exportJSON()));
   $('#import').addEventListener('change', async (e) => {
     const f = e.target.files[0];
@@ -744,9 +808,95 @@ function buildICS(p) {
     'END:VCALENDAR'].join('\r\n');
 }
 
+// ---------- Geräte-Abgleich ----------
+function syncStatusText(st = syncStatus()) {
+  if (st.state === 'syncing') return '⏳ Gleiche ab …';
+  if (st.state === 'error') return `⚠️ ${esc(st.error)}`;
+  if (st.at) return `✅ Verbunden · zuletzt abgeglichen ${new Date(st.at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+  return '✅ Verbunden';
+}
+
+function syncSectionHTML() {
+  const code = syncCode();
+  return `<section class="card stack" id="sync-card">
+    <div class="card-head"><span class="tile-ico blue">🔄</span><div><h2>Handy & PC verbinden</h2><span class="small muted">Gleicher Stand auf allen Geräten – ohne Konto.</span></div></div>
+    ${code ? `
+      <p class="small" id="sync-status" style="margin:0">${syncStatusText()}</p>
+      <button class="btn" id="sync-show">📱 Weiteres Gerät verbinden</button>
+      <div class="grid2"><button class="btn soft" id="sync-now">Jetzt abgleichen</button><button class="btn ghost" id="sync-leave">Trennen</button></div>
+    ` : `
+      <button class="btn" id="sync-new">Sync einrichten</button>
+      <button class="btn soft" id="sync-join">Ich habe schon einen Code</button>
+    `}
+    <p class="small muted" style="margin:0">🔒 Deine Daten werden auf dem Gerät verschlüsselt, bevor sie gespeichert werden. Ohne deinen Code kann sie niemand lesen – auch der Server nicht.</p>
+  </section>`;
+}
+
+let unsubSync = null;
+function bindSyncSection(p) {
+  unsubSync?.();
+  unsubSync = onSyncStatus((st) => { const el = $('#sync-status'); if (el) el.innerHTML = syncStatusText(st); });
+  $('#sync-new')?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    e.target.textContent = 'Richte ein …';
+    try { await setupSync(); toast('🔄 Sync eingerichtet'); renderProfile(p); showSyncCode(); }
+    catch (err) { toast(err.message, 4500); e.target.disabled = false; e.target.textContent = 'Sync einrichten'; }
+  });
+  $('#sync-join')?.addEventListener('click', () => showJoin());
+  $('#sync-show')?.addEventListener('click', () => showSyncCode());
+  $('#sync-now')?.addEventListener('click', async () => { if (await syncNow()) toast('Abgeglichen ✓'); });
+  $('#sync-leave')?.addEventListener('click', () => {
+    if (!confirm('Dieses Gerät vom Abgleich trennen? Deine Daten bleiben hier erhalten, werden aber nicht mehr abgeglichen.')) return;
+    leaveSync();
+    renderProfile(p);
+  });
+}
+
+async function showSyncCode() {
+  const code = syncCode();
+  if (!code) return;
+  const link = syncLink(code);
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Weiteres Gerät verbinden</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+    <p class="muted small">Scanne den QR-Code mit dem anderen Gerät – oder gib dort unter <b>Profil → Handy & PC verbinden → Ich habe schon einen Code</b> diesen Code ein:</p>
+    <div class="card center" id="qr" style="max-width:260px;margin:0 auto;padding:12px;background:#fff">Lade QR-Code …</div>
+    <p class="center" style="font-family:ui-monospace,monospace;font-weight:700;font-size:1.05rem;letter-spacing:.04em;margin:16px 0 8px">${formatCode(code)}</p>
+    <button class="btn soft block" id="copy-link">🔗 Link kopieren</button>
+    <p class="small muted" style="margin-top:12px">⚠️ Wer diesen Code hat, kann deine Daten sehen und ändern. Teile ihn nur mit deinen eigenen Geräten oder deiner Familie.</p>`);
+  try { $('#qr', sheet).innerHTML = await qrSVG(link); } catch (e) { $('#qr', sheet).textContent = e.message; }
+  $('#copy-link', sheet).addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(link); toast('Link kopiert ✓'); } catch { prompt('Link kopieren:', link); }
+  });
+}
+
+function showJoin(prefill = '') {
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Mit Code verbinden</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+    <p class="muted small">Den Code findest du auf dem ersten Gerät unter <b>Profil → Handy & PC verbinden → Weiteres Gerät verbinden</b>.</p>
+    <label class="field"><span>Sync-Code</span><input type="text" id="join-code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-…" value="${esc(formatCode(prefill))}"></label>
+    <p class="small muted">Profile, die schon auf diesem Gerät sind, werden mit dem gemeinsamen Stand zusammengeführt – es geht nichts verloren.</p>
+    <button class="btn block" id="join-go">Verbinden</button>`);
+  const btn = $('#join-go', sheet);
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Verbinde …';
+    try {
+      await joinSync($('#join-code', sheet).value);
+      closeSheet();
+      toast('🔄 Verbunden – dein Stand ist jetzt auf diesem Gerät.', 4000);
+      confetti({ count: 60 });
+      location.hash = store.activeProfile() ? '#/heute' : '#/neu';
+      route();
+    } catch (e) {
+      toast(e.message, 4500);
+      btn.disabled = false;
+      btn.textContent = 'Verbinden';
+    }
+  });
+}
+
 // ---------- Start ----------
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 route();
 startReminders();
+startSync(onRemoteChange);

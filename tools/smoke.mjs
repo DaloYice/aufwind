@@ -29,6 +29,7 @@ async function ev(expr) {
   return r.result.value;
 }
 async function shot(name, full = true) {
+  await sleep(500); // Einblende-Animationen abwarten
   const h = full ? await ev('document.documentElement.scrollHeight') : 915;
   const r = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: full, clip: { x: 0, y: 0, width: WIDTH, height: h, scale: 1 } });
   writeFileSync(join(out, name + '.png'), Buffer.from(r.data, 'base64'));
@@ -88,7 +89,7 @@ try {
     if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg.result || {}); pending.delete(msg.id); }
     if (msg.method === 'Runtime.exceptionThrown') errors.push(msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text);
     if (msg.method === 'Runtime.consoleAPICalled' && msg.params.type === 'error') errors.push('console: ' + msg.params.args.map((a) => a.value ?? a.description).join(' '));
-    if (msg.method === 'Log.entryAdded' && msg.params.entry.level === 'error' && !/favicon/.test(msg.params.entry.url || '')) errors.push('log: ' + msg.params.entry.text + ' ' + (msg.params.entry.url || ''));
+    if (msg.method === 'Log.entryAdded' && msg.params.entry.level === 'error' && !/favicon/.test(msg.params.entry.url || '') && !/navigator.vibrate/.test(msg.params.entry.text)) errors.push('log: ' + msg.params.entry.text + ' ' + (msg.params.entry.url || ''));
   };
   await send('Runtime.enable'); await send('Page.enable'); await send('Log.enable');
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
@@ -152,7 +153,7 @@ try {
   await ev('location.reload()');
   await sleep(1300);
   await shot('09-heute-mit-verlauf');
-  log('Rückblick-Banner:', await exists('#review'), '· Familienkarte:', await ev(`document.body.innerText.includes('Familien-Challenge')`));
+  log('Rückblick-Banner:', await exists('#review'), '· Familienkarte:', await ev(`/familien-challenge/i.test(document.body.innerText)`));
   await click('#review'); await sleep(300);
   await shot('10-rueckblick', false);
   await click('#g-save'); await sleep(400);

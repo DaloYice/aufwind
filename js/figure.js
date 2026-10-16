@@ -168,7 +168,7 @@ export function renderStatic(container, exerciseId, keyIndex = 0, size = 160) {
   svg.setAttribute('width', size);
   svg.setAttribute('height', size);
   svg.innerHTML = `<line x1="0" y1="185.5" x2="200" y2="185.5" class="ground"/>${propsSVG(def.props)}<g class="fig"></g>`;
-  draw(svg, solve(def.keys[keyIndex].p, def.view || 'side'));
+  draw(svg, solve(def.keys[Math.min(keyIndex, def.keys.length - 1)].p, def.view || 'side'));
   container.appendChild(svg);
   return svg;
 }

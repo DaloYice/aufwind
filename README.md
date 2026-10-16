@@ -23,8 +23,16 @@ https://aufwind-4er.pages.dev/ (Cloudflare Pages, Auto-Deploy bei Push auf `main
 - **Dashboard:** Kennzahlen, Wochenminuten mit WHO-Linie, Aktivitätskalender, Gewichtsverlauf, Schwerpunkte, starke Wochentage, Gefühl-Verteilung – mit Tooltips und Tabellenansicht
 - Serie mit Joker, 23 Abzeichen, Level-Vorschläge, Messwerte (Gewicht, Bauch, Hüfte, Schritte)
 - Erinnerungen per Benachrichtigung (solange die App offen ist) und als Kalender-Datei (.ics), JSON-Sicherung
+- **Handy & PC verbinden:** Sync-Code (mit QR), Ende-zu-Ende verschlüsselt (AES-GCM), Cloudflare Pages Function + Workers KV, Stände werden zusammengeführt
+
+## Sync einrichten (einmalig, Cloudflare)
+1. Cloudflare → Storage & databases → Workers KV → Namespace `aufwind-sync` anlegen
+2. Workers & Pages → aufwind → Settings → Bindings → KV namespace: Variablenname `AUFWIND_SYNC`, Namespace `aufwind-sync`
+3. Neu deployen (Push oder „Retry deployment“)
+
+Lokal emuliert `server.mjs` den Speicher im Arbeitsspeicher. Test mit zwei Geräten: `node tools/sync-smoke.mjs . <ausgabeordner>`.
 
 ## Technik
-Vanilla JS (ES-Module), kein Build-Step, keine Abhängigkeiten. Daten in `localStorage`. Service Worker (Network-First).
+Vanilla JS (ES-Module), kein Build-Step, keine npm-Abhängigkeiten. Schrift Nunito (OFL, lokal in `fonts/`), QR-Codes mit qrcode-generator (MIT, `vendor/`). Daten in `localStorage`. Service Worker (Network-First).
 
 > Hinweis: Für Installation/Offline auf dem Handy braucht es HTTPS (oder localhost). Im WLAN per `http://<PC-IP>:8080` läuft die App, aber ohne Installation/Offline.
