@@ -3,6 +3,9 @@ import { byId, CATEGORIES } from './data/exercises.js';
 import { esc, fmtAmount, fmtClock } from './ui.js';
 import { mountFigure, hasFigure } from './figure.js';
 import { confetti, haptic } from './confetti.js';
+import { ICON } from './icons.js';
+
+const REST_FACTOR = { kurz: 0.6, normal: 1, lang: 1.5 };
 
 let audioCtx;
 function beep(freq = 880, ms = 150) {
@@ -30,7 +33,7 @@ function say(text, enabled) {
 
 /**
  * @param {object} challenge  aus challenges.js
- * @param {{speech:boolean, sound:boolean}} settings
+ * @param {{speech:boolean, sound:boolean, rest?:'kurz'|'normal'|'lang'}} settings
  * @param {(result:{feedback:string, durationSec:number, partial?:boolean, doneSteps?:number}|null)=>void} onDone  null = abgebrochen
  * @param {{allowPartial?:boolean}} [opts]  allowPartial: beim Abbrechen darf der geschaffte Teil gespeichert werden
  */
@@ -48,6 +51,8 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
 
   const steps = challenge.steps;
   const startedAt = Date.now();
+  // Pausenlänge aus den Einstellungen (Programme ohne Pause bleiben ohne Pause)
+  const restSec = challenge.rest ? Math.max(10, Math.round((challenge.rest * (REST_FACTOR[settings.rest] || 1)) / 5) * 5) : 0;
   let idx = 0;
   let phase = 'intro'; // intro | work | rest | done
   let remaining = 0;
@@ -109,9 +114,9 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
 
   function header() {
     const pct = Math.round((idx / steps.length) * 100);
-    return `<div class="row spread"><button class="icon-btn" data-act="quit" aria-label="Beenden">✕</button>
+    return `<div class="row spread"><button class="icon-btn" data-act="quit" aria-label="Beenden">${ICON.close}</button>
       <span class="muted small">${Math.min(idx + 1, steps.length)} / ${steps.length}${challenge.rounds > 1 ? ` · Runde ${steps[Math.min(idx, steps.length - 1)].round}/${challenge.rounds}` : ''}</span>
-      <span style="width:48px"></span></div>
+      <button class="icon-btn" data-act="back" aria-label="${phase === 'rest' || idx > 0 ? 'Zurück zur vorigen Übung' : 'Übung neu starten'}">${ICON.back}</button></div>
       <div class="progressbar" style="margin:12px 0 0"><i style="width:${pct}%"></i></div>`;
   }
 
@@ -137,14 +142,14 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
           <p class="small"><b>Tipp:</b> ${esc(ex.tip)}</p></details>
         <p class="small muted"><b>Zu schwer?</b> ${esc(ex.easier)}</p>`;
       controls = timed
-        ? `<button class="btn ghost" data-act="pause">${paused ? '▶ Weiter' : '⏸ Pause'}</button><button class="btn soft" data-act="skip">Überspringen</button>`
+        ? `<button class="btn ghost" data-act="pause">${paused ? 'Weiter' : 'Pause'}</button><button class="btn soft" data-act="skip">Überspringen</button>`
         : `<button class="btn ghost" data-act="skip">Überspringen</button><button class="btn" data-act="next">✓ Geschafft</button>`;
     } else if (phase === 'rest') {
       const nx = byId[steps[idx + 1].id];
-      body = `<h2 class="rest">Kurz durchatmen</h2>${ring(challenge.rest)}
-        <p class="muted">Als Nächstes</p><div class="ex-icon" style="font-size:2.5rem">${nx.icon}</div>
-        <h3>${esc(nx.name)} · ${esc(fmtAmount(nx, steps[idx + 1].amount))}</h3>`;
-      controls = `<button class="btn ghost" data-act="pause">${paused ? '▶ Weiter' : '⏸ Pause'}</button><button class="btn" data-act="skip">Weiter</button>`;
+      body = `<h2 class="rest">Kurz durchatmen</h2>${ring(restSec)}
+        <div class="next-up">${hasFigure(nx.id) ? '<div class="fig-stage small" id="fig-next"></div>' : `<div class="ex-icon">${nx.icon}</div>`}
+          <div><div class="eyebrow">Als Nächstes</div><h3>${esc(nx.name)}</h3><p class="small muted">${esc(fmtAmount(nx, steps[idx + 1].amount))}</p></div></div>`;
+      controls = `<button class="btn ghost" data-act="pause">${paused ? 'Weiter' : 'Pause'}</button><button class="btn soft" data-act="more">+15 s</button><button class="btn" data-act="skip">Los</button>`;
     } else if (phase === 'done') {
       const min = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
       body = `<div class="hero-emoji">🎉</div><h1>Geschafft!</h1><p>${min} Minute${min > 1 ? 'n' : ''} Bewegung – stark.</p>
@@ -163,15 +168,17 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
       body = `<div class="hero-emoji">⏸</div><h1>Aufhören?</h1>
         ${canSave ? `<p>Du hast schon <b>${doneSteps} von ${steps.length}</b> Übungen geschafft (ca. ${min} Min). Das zählt!</p>` : '<p class="muted">Kein Problem – jeder Tag ist anders.</p>'}`;
       controls = `<div class="feedback">
-        ${canSave ? '<button class="btn" data-act="save-partial">💾 Geschafftes speichern</button>' : ''}
-        <button class="btn soft" data-act="resume">▶ Weitermachen</button>
+        ${canSave ? '<button class="btn" data-act="save-partial">Geschafftes speichern</button>' : ''}
+        <button class="btn soft" data-act="resume">Weitermachen</button>
         <button class="btn ghost" data-act="discard">${canSave ? 'Verwerfen' : 'Beenden'}</button></div>`;
     }
 
-    root.innerHTML = `${phase === 'done' || phase === 'intro' || quitting ? `<div class="row"><button class="icon-btn" data-act="${quitting ? 'resume' : 'quit'}" aria-label="${quitting ? 'Zurück zur Übung' : 'Schließen'}">✕</button></div>` : header()}
+    root.innerHTML = `${phase === 'done' || phase === 'intro' || quitting ? `<div class="row"><button class="icon-btn" data-act="${quitting ? 'resume' : 'quit'}" aria-label="${quitting ? 'Zurück zur Übung' : 'Schließen'}">${ICON.close}</button></div>` : header()}
       <div class="player-body">${body}</div><div class="player-controls">${controls}</div>`;
     const stage = root.querySelector('#fig');
     if (stage && ex) mountFigure(stage, ex.id, { size: 220 });
+    const nextStage = root.querySelector('#fig-next');
+    if (nextStage) mountFigure(nextStage, steps[idx + 1].id, { size: 120 });
   }
 
   /** Vollständig geschaffte Übungen (in der Pause zählt die gerade beendete mit). */
@@ -201,7 +208,7 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
       return;
     }
     clearInterval(timer);
-    if (phase === 'work' && idx < steps.length - 1 && !challenge.rest) {
+    if (phase === 'work' && idx < steps.length - 1 && !restSec) {
       // Intervall-Modus (Programme): direkt weiter ohne Pause
       idx++;
       sound(1320, 120);
@@ -211,7 +218,7 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
       paused = false;
       render();
       say(`Pause. Als Nächstes: ${byId[steps[idx + 1].id].name}`, settings.speech);
-      startTimer(challenge.rest);
+      startTimer(restSec);
     } else if (phase === 'rest') {
       idx++;
       enterWork();
@@ -238,6 +245,15 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
     else if (act === 'next' || act === 'skip') {
       if (act === 'skip' && phase === 'work') side = 2;
       next();
+    } else if (act === 'back') {
+      // In der Pause: gerade beendete Übung wiederholen; sonst eine zurück (bei der ersten: neu starten)
+      clearInterval(timer);
+      if (phase === 'work' && idx > 0) idx--;
+      enterWork();
+    } else if (act === 'more') {
+      remaining += 15;
+      total += 15;
+      updateRing();
     } else if (act === 'pause') {
       paused = !paused;
       render();

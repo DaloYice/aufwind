@@ -6,7 +6,7 @@ const KEY = 'aufwind:v1';
 const listeners = new Set();
 
 function empty() {
-  return { profiles: [], activeId: null, deletedProfiles: [], settings: { speech: true, sound: true, notify: false, familyGoal: null, familyGoalAt: '' } };
+  return { profiles: [], activeId: null, deletedProfiles: [], settings: { speech: true, sound: true, notify: false, familyGoal: null, familyGoalAt: '', fontSize: 'normal', rest: 'normal' } };
 }
 
 /** Ergänzt Felder, die ältere Versionen noch nicht kannten. */

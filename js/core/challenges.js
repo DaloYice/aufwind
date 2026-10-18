@@ -101,8 +101,18 @@ export function eveningChallenge(dateKey, profile) {
 }
 
 export function habitOfDay(dateKey, profile) {
+  const picked = profile.habitSwap?.[dateKey] && HABITS.find((h) => h.id === profile.habitSwap[dateKey]);
+  if (picked) return picked;
   const rand = rng(hashString(`${dateKey}|${profile.id}|habit`));
   return HABITS[Math.floor(rand() * HABITS.length)];
+}
+
+/** Gewohnheit des Tages gegen eine andere tauschen (in größeren Sprüngen, damit nicht zweimal „Wasser“ hintereinander kommt). */
+export function swapHabit(profile, dateKey) {
+  const i = HABITS.indexOf(habitOfDay(dateKey, profile));
+  const next = HABITS[(i + 7) % HABITS.length];
+  profile.habitSwap = { [dateKey]: next.id }; // nur der Tag selbst zählt
+  return next;
 }
 
 export function tipOfDay(dateKey) {

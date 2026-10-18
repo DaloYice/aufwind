@@ -85,6 +85,7 @@ export function mergeProfile(x, y) {
   p.removedAt = mergeRemoved(newer.removedAt, older.removedAt);
   p.sessions = mergeSessions(newer.sessions, older.sessions, p.removedAt);
   p.swaps = { ...(older.swaps || {}), ...(newer.swaps || {}) };
+  p.habitSwap = { ...(older.habitSwap || {}), ...(newer.habitSwap || {}) };
   p.habits = { ...(older.habits || {}), ...(newer.habits || {}) };
   p.water = { ...(older.water || {}) };
   for (const [d, n] of Object.entries(newer.water || {})) p.water[d] = Math.max(n, p.water[d] || 0);

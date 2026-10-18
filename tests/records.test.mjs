@@ -152,3 +152,20 @@ test('Tausch passt die Menge an die neue Übung an und räumt alte Tage auf', ()
   assert.ok(step.amount > 0);
   assert.equal(p.swaps['2026-10-01|morning'], undefined);
 });
+
+test('Gewohnheit tauschen: anders als vorher, nur für den Tag, irgendwann alle durch', async () => {
+  const { habitOfDay, swapHabit } = await import('../js/core/challenges.js');
+  const { HABITS } = await import('../js/data/habits.js');
+  const p = prof();
+  const first = habitOfDay('2026-10-18', p);
+  const seen = new Set([first.id]);
+  for (let i = 0; i < HABITS.length - 1; i++) {
+    const h = swapHabit(p, '2026-10-18');
+    assert.equal(habitOfDay('2026-10-18', p).id, h.id);
+    seen.add(h.id);
+  }
+  assert.equal(seen.size, HABITS.length);
+  assert.deepEqual(habitOfDay('2026-10-19', p), habitOfDay('2026-10-19', prof()));
+  swapHabit(p, '2026-10-19');
+  assert.deepEqual(Object.keys(p.habitSwap), ['2026-10-19']);
+});

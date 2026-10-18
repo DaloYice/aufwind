@@ -4,7 +4,8 @@ import { runPlayer } from './player.js';
 import { lineChart } from './chart.js';
 import { toKey, addDays, fromKey, formatDate } from './core/dates.js';
 import { LEVELS, QUESTIONS, HEALTH_FLAGS, assess, bmi, bmiClass } from './core/assessment.js';
-import { challengeFor, habitOfDay, tipOfDay, exerciseSeconds, canSwap, swapExercise } from './core/challenges.js';
+import { challengeFor, habitOfDay, swapHabit, tipOfDay, exerciseSeconds, canSwap, swapExercise } from './core/challenges.js';
+import { ICON, icoTile } from './icons.js';
 import { addSession, updateSession, removeSession, restoreSession } from './core/records.js';
 import { streak, adjustIntensity, levelSuggestion, awardBadges, BADGES } from './core/progress.js';
 import { weekStart, weekStats, weekGoal, reviewDue, suggestGoal, reviewMessage, familyProgress, defaultFamilyGoal } from './core/week.js';
@@ -17,7 +18,7 @@ import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported } from './reminders.js';
 
-const VERSION = '0.4.1';
+const VERSION = '0.5.0';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung' };
 const view = $('#view');
 const tabbar = $('#tabbar');
@@ -29,6 +30,33 @@ const ANCHORS = {
 };
 const opts = (list, sel, empty = '— kein fester Zeitpunkt —') =>
   `<option value="">${empty}</option>${list.map((o) => `<option ${o === sel ? 'selected' : ''}>${esc(o)}</option>`).join('')}`;
+
+const FONT_SIZES = { normal: { label: 'Normal', scale: 1 }, gross: { label: 'Groß', scale: 1.12 }, sehrgross: { label: 'Sehr groß', scale: 1.25 } };
+const REST_LABELS = { kurz: 'Kurz', normal: 'Normal', lang: 'Lang' };
+
+/** Schriftgröße (pro Gerät) auf die Wurzel anwenden – alle rem-Größen skalieren mit. */
+function applyFontSize() {
+  const fs = FONT_SIZES[store.getState().settings.fontSize] || FONT_SIZES.normal;
+  document.documentElement.style.setProperty('--fs', String(fs.scale));
+}
+
+/** Avatar → Profile der Familie wechseln oder Profil öffnen. */
+function showProfiles(p) {
+  const s = store.getState();
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Wer trainiert?</h2><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
+    <ul class="pick-list">${s.profiles.map((x) => `<li><button type="button" data-pick="${x.id}" class="${x.id === p.id ? 'on' : ''}" aria-current="${x.id === p.id}">
+      <span class="avatar sm">${x.emoji || '🙂'}</span><span class="grow"><b>${esc(x.name)}</b><br><span class="small muted">Level ${x.level} · ${esc(LEVELS[x.level - 1].name)}</span></span>
+      ${x.id === p.id ? `<span class="pick-check">${ICON.check}</span>` : ''}</button></li>`).join('')}</ul>
+    <div class="grid2" style="margin-top:16px"><a class="btn soft" href="#/neu">${ICON.plus}Neues Profil</a><a class="btn ghost" href="#/profil">${ICON.sliders}Einstellungen</a></div>`);
+  $$('[data-pick]', sheet).forEach((b) => b.addEventListener('click', () => {
+    const id = b.dataset.pick;
+    closeSheet();
+    if (id === p.id) return;
+    store.switchProfile(id);
+    route();
+    toast(`Hallo, ${store.activeProfile().name}!`);
+  }));
+}
 
 // ---------- Router ----------
 const routes = { heute: renderToday, uebungen: renderLibrary, fortschritt: renderProgress, profil: renderProfile, neu: renderOnboarding };
@@ -46,10 +74,14 @@ function route() {
   tabbar.hidden = name === 'neu';
   $$('a', tabbar).forEach((a) => a.classList.toggle('active', a.dataset.tab === name));
   currentRoute = name;
+  view.classList.add('enter');
+  clearTimeout(enterTimer);
+  enterTimer = setTimeout(() => view.classList.remove('enter'), 700);
   (routes[name] || renderToday)(p);
   window.scrollTo(0, 0);
 }
 let currentRoute = '';
+let enterTimer;
 
 /** Nach einem Abgleich neu zeichnen – aber nie mitten in einer Eingabe, einem Dialog oder Workout. */
 let redrawPending = false;
@@ -89,7 +121,7 @@ function renderOnboarding() {
           <div class="row"><span style="font-size:1.6rem">🥦</span><span><b>Täglich</b> eine kleine Alltags-Gewohnheit</span></div>
         </div>
         <p class="muted small" style="margin-top:16px">Zuerst ein paar Fragen (2–3 Minuten), damit wir das richtige Startlevel finden. Deine Daten bleiben auf deinen Geräten.</p>
-        ${isFirst ? '<button type="button" class="btn ghost block" id="join-existing">🔄 Schon auf einem anderen Gerät? Mit Code verbinden</button>' : ''}`;
+        ${isFirst ? '<button type="button" class="btn ghost block" id="join-existing">Schon auf einem anderen Gerät? Mit Code verbinden</button>' : ''}`;
     } else if (s === 'name') {
       html = `<h1>Wie sollen wir dich nennen?</h1>
         <label class="field"><span>Name</span><input type="text" id="f-name" value="${esc(data.name)}" maxlength="30" autocomplete="given-name"></label>
@@ -227,25 +259,41 @@ function renderToday(p) {
   const days = Array.from({ length: 7 }, (_, k) => addDays(today, k - 6));
   const week = days.map((d) => {
     const cls = [doneSet.has(d) ? 'on' : st.jokers.includes(d) ? 'joker' : '', d === today ? 'today' : ''].join(' ');
-    return `<span class="${cls}" title="${formatDate(d)}">${fromKey(d).toLocaleDateString('de-DE', { weekday: 'short' }).slice(0, 2)}</span>`;
+    const label = fromKey(d).toLocaleDateString('de-DE', { weekday: 'short' }).slice(0, 2);
+    return `<span class="${cls}" title="${formatDate(d)}${doneSet.has(d) ? ' – aktiv' : st.jokers.includes(d) ? ' – Joker' : ''}">${label}</span>`;
   }).join('');
 
+  const SLOT = { morning: { label: 'Morgen', icon: 'sun', tone: 'orange' }, evening: { label: 'Abend', icon: 'moon', tone: 'violet' } };
   const card = (slot) => {
     const c = challengeFor(slot, today, p);
     const d = done(slot);
     const part = d?.partial;
-    const names = [...new Set(c.steps.map((s) => s.id))].map((id) => `<span class="chip">${byId[id].icon} ${esc(byId[id].name)}</span>`).join('');
+    const ids = [...new Set(c.steps.map((s) => s.id))];
+    if (d && !part) {
+      // Erledigt: kompakt, damit die offenen Aufgaben oben sichtbar bleiben
+      return `<section class="card session compact ${slot}">
+        <span class="done-dot" aria-hidden="true">${ICON.check}</span>
+        <div class="grow"><b>${esc(c.title)}</b><div class="small muted">${SLOT[slot].label} · erledigt · ${Math.max(1, Math.round(d.durationSec / 60))} Min</div></div>
+        <button class="btn ghost sm" data-start="${slot}">Nochmal</button></section>`;
+    }
     const figId = c.steps.find((x) => hasFigure(x.id) && byId[x.id].cat !== 'entspannung')?.id || c.steps[0].id;
-    return `<section class="card hero ${slot} ${d ? 'done' : ''}">
-      <div class="hero-grid"><div><div class="eyebrow" style="color:inherit;opacity:.85">${slot === 'morning' ? '🌅 Morgen-Challenge' : '🌙 Abend-Challenge'}</div>
-        <h2 style="margin:4px 0 2px">${esc(c.title)}</h2>${p.plan?.[slot] ? `<div class="small" style="opacity:.9">📌 ${esc(p.plan[slot])}</div>` : ''}</div>
-        <div class="hero-fig" data-fig="${figId}">${d ? `<span class="done-badge" aria-label="${part ? 'teilweise erledigt' : 'erledigt'}">${part ? '½' : '✓'}</span>` : ''}</div></div>
-      <div class="chips">${names}</div>
-      <div class="card-foot"><span>${part ? `<b>Teilweise geschafft</b> · ${Math.max(1, Math.round(d.durationSec / 60))} Min` : `<b>⏱ ${c.minutes} Min</b>${c.rounds > 1 ? ` · ${c.rounds} Runden` : ''}`}</span>
-      <button class="btn ${d && !part ? 'light sm' : 'light'}" data-start="${slot}">${part ? 'Ganz machen' : d ? 'Nochmal' : "Los geht's"}</button></div>
-      ${d && !part ? '' : `<div class="card-links"><button type="button" data-swap="${slot}">🔄 Übungen anpassen</button><button type="button" data-mark="${slot}">✓ Schon erledigt</button></div>`}
+    return `<section class="card session ${slot}">
+      <div class="session-top">
+        <div class="grow"><div class="slot-label">${ICON[SLOT[slot].icon]}${SLOT[slot].label}${p.plan?.[slot] ? `<span class="muted"> · ${esc(p.plan[slot])}</span>` : ''}</div>
+          <h2>${esc(c.title)}</h2>
+          <div class="meta">${part ? `Teilweise geschafft · ${Math.max(1, Math.round(d.durationSec / 60))} Min` : `${c.minutes} Min · ${ids.length} Übungen${c.rounds > 1 ? ` · ${c.rounds} Runden` : ''}`}</div></div>
+        <div class="session-fig" data-fig="${figId}">${part ? '<span class="part-badge" aria-label="teilweise erledigt">½</span>' : ''}</div>
+      </div>
+      <p class="ex-line">${ids.map((id) => esc(byId[id].name)).join(' · ')}</p>
+      <div class="session-foot">
+        <div class="links"><button type="button" class="link-btn" data-swap="${slot}">${ICON.swap}Anpassen</button><button type="button" class="link-btn" data-mark="${slot}">${ICON.check}Erledigt</button></div>
+        <button class="btn" data-start="${slot}">${part ? 'Ganz machen' : 'Starten'}</button>
+      </div>
     </section>`;
   };
+  // Passende Tageszeit zuerst, erledigte nach unten
+  const slots = (hour >= 15 ? ['evening', 'morning'] : ['morning', 'evening'])
+    .sort((a, b) => Number(!!done(a) && !done(a).partial) - Number(!!done(b) && !done(b).partial));
 
   const parts = [
     { label: 'Morgen', on: !!done('morning'), color: 'var(--accent)' },
@@ -253,51 +301,59 @@ function renderToday(p) {
     { label: 'Gewohnheit', on: habitDone, color: 'var(--primary)' },
     { label: 'Trinken', on: (p.water[today] || 0) >= p.waterGoal, color: 'var(--water)' },
   ];
+  const goalReached = wStats.activeDays >= goal;
 
   view.innerHTML = `
     <header class="greet"><div><div class="eyebrow">${fromKey(today).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
-      <h1>${greet}, ${esc(p.name)} 👋</h1></div><a class="avatar" href="#/profil" aria-label="Profil">${p.emoji || '🙂'}</a></header>
+      <h1>${greet}, ${esc(p.name)}</h1></div><button type="button" class="avatar" id="avatar" aria-label="Profil wechseln oder öffnen">${p.emoji || '🙂'}</button></header>
     <div class="stack">
       <section class="card today-card">
         <div class="today-top">
           ${dayRing(parts)}
           <div class="today-info">
-            <div class="streak-line"><span class="flame" aria-hidden="true">🔥</span><b class="big">${st.count}</b><span>${st.count === 1 ? 'Tag' : 'Tage'} in Folge</span></div>
-            <div class="small muted">${st.jokerAvailable ? '🃏 Joker frei – ein Pausentag pro Woche ist okay.' : '🃏 Joker diese Woche genutzt.'}</div>
-            <div class="small goal-line">🎯 Wochenziel: <b>${Math.min(wStats.activeDays, goal)} von ${goal}</b> Tagen${wStats.activeDays >= goal ? ` – geschafft! 🎉${wStats.activeDays > goal ? ` (+${wStats.activeDays - goal})` : ''}` : ''}</div>
-            <div class="goal-dots" aria-hidden="true">${Array.from({ length: goal }, (_, k) => `<i class="${k < wStats.activeDays ? 'on' : ''}"></i>`).join('')}</div>
+            <div class="kpi"><span class="kpi-num">${st.count}</span><span class="kpi-unit">${ICON.flame}${st.count === 1 ? 'Tag' : 'Tage'} in Folge</span></div>
+            <div class="small muted">${st.jokerAvailable ? 'Joker frei – ein Pausentag pro Woche ist okay.' : 'Joker diese Woche genutzt.'}</div>
+            <div class="goal-line small">Wochenziel <b>${Math.min(wStats.activeDays, goal)}/${goal}</b>${goalReached ? ` · geschafft${wStats.activeDays > goal ? ` (+${wStats.activeDays - goal})` : ''}` : ''}
+              <span class="goal-dots" aria-hidden="true">${Array.from({ length: goal }, (_, k) => `<i class="${k < wStats.activeDays ? 'on' : ''}"></i>`).join('')}</span></div>
           </div>
         </div>
-        <div class="ring-legend">${parts.map((x) => `<span class="${x.on ? 'on' : ''}"><i style="background:${x.color}"></i>${x.label}</span>`).join('')}</div>
-        <div class="week">${week}</div>
+        <div class="ring-legend">${parts.map((x) => `<span class="${x.on ? 'on' : ''}"><i style="--c:${x.color}"></i>${x.label}</span>`).join('')}</div>
+        <div class="week" aria-label="Letzte 7 Tage">${week}</div>
       </section>
-      ${review ? `<div class="banner row spread"><span><b>📊 Dein Wochenrückblick ist da</b><br><span class="small muted">Schau, was du letzte Woche geschafft hast.</span></span><button class="btn sm" id="review">Ansehen</button></div>` : ''}
-      ${sugg === 'up' ? `<div class="banner"><b>⬆️ Bereit für mehr?</b><p class="small">Die Challenges fallen dir zuletzt leicht. Möchtest du auf Level ${p.level + 1} (${esc(LEVELS[p.level].name)}) wechseln?</p>
+      ${review ? `<div class="banner row spread"><span><b>Dein Wochenrückblick ist da</b><br><span class="small muted">Schau, was du letzte Woche geschafft hast.</span></span><button class="btn sm" id="review">Ansehen</button></div>` : ''}
+      ${sugg === 'up' ? `<div class="banner"><b>Bereit für mehr?</b><p class="small">Die Challenges fallen dir zuletzt leicht. Möchtest du auf Level ${p.level + 1} (${esc(LEVELS[p.level].name)}) wechseln?</p>
         <div class="row"><button class="btn sm" data-level="${p.level + 1}">Ja, Level ${p.level + 1}</button><button class="btn ghost sm" data-dismiss>Noch nicht</button></div></div>` : ''}
       ${sugg === 'down' ? `<div class="warn"><b>Etwas zu viel?</b><p class="small">Kein Problem – ein Schritt zurück ist auch ein Schritt. Auf Level ${p.level - 1} wechseln?</p>
         <div class="row"><button class="btn sm" data-level="${p.level - 1}">Ja, Level ${p.level - 1}</button><button class="btn ghost sm" data-dismiss>Nein, weiter so</button></div></div>` : ''}
-      ${p.why && !anyToday ? `<section class="why-card"><span class="tile-ico green">💚</span><div><div class="eyebrow">Dein Warum</div><b>${esc(p.why)}</b></div></section>` : ''}
-      ${card('morning')}
-      ${card('evening')}
+      ${p.why && !anyToday ? `<section class="card why-card">${icoTile('heart', 'green')}<div><div class="eyebrow">Dein Warum</div><b>${esc(p.why)}</b></div></section>` : ''}
+      ${slots.map(card).join('')}
       ${programCard(p, today)}
       <section class="card">
-        <div class="card-head"><span class="tile-ico green">${habit.icon}</span><div class="eyebrow">Gewohnheit des Tages</div></div>
+        <div class="card-head">${icoTile('leaf', 'green')}<div class="eyebrow grow">Gewohnheit des Tages</div>
+          ${habitDone ? '' : `<button type="button" class="link-btn" id="habit-swap" aria-label="Andere Gewohnheit vorschlagen">${ICON.swap}Andere</button>`}</div>
         <label class="check"><input type="checkbox" id="habit" ${habitDone ? 'checked' : ''}>
           <span><b>${esc(habit.text)}</b><br><span class="small muted">${esc(habit.tip)}</span></span></label>
       </section>
       ${waterCard(p, today)}
       ${familyCard(p)}
-      <button class="btn soft block" id="extra">➕ Andere Bewegung eintragen</button>
-      <section class="card"><div class="card-head"><span class="tile-ico orange">💡</span><div class="eyebrow">Wusstest du?</div></div><p style="margin:0">${esc(tipOfDay(today))}</p></section>
+      <button class="btn soft block" id="extra">${ICON.plus}Andere Bewegung eintragen</button>
+      <section class="card"><div class="card-head">${icoTile('bulb', 'orange')}<div class="eyebrow">Wusstest du?</div></div><p style="margin:0">${esc(tipOfDay(today))}</p></section>
       <p class="center small muted">Level ${p.level} · ${esc(L.name)} · Intensität ${Math.round(p.intensity * 100)} %</p>
     </div>`;
 
-  $$('[data-fig]').forEach((el) => renderStatic(el, el.dataset.fig, 1, 84));
+  $$('[data-fig]').forEach((el) => renderStatic(el, el.dataset.fig, 1, 76));
+  $('#avatar').addEventListener('click', () => showProfiles(p));
+  $('#habit-swap')?.addEventListener('click', () => {
+    swapHabit(p, today);
+    store.save();
+    renderToday(p);
+    $('#habit-swap')?.focus();
+  });
   $$('[data-start]').forEach((b) => b.addEventListener('click', () => startChallenge(p, b.dataset.start)));
   $$('[data-swap]').forEach((b) => b.addEventListener('click', () => showSwap(p, b.dataset.swap)));
   $$('[data-mark]').forEach((b) => b.addEventListener('click', () => markDone(p, b.dataset.mark)));
   $('#habit').addEventListener('change', (e) => {
-    if (e.target.checked) { p.habits[today] = habit.id; haptic(); toast('Gut gemacht! 🌱'); } else delete p.habits[today];
+    if (e.target.checked) { p.habits[today] = habit.id; haptic(); toast('Gut gemacht!'); } else delete p.habits[today];
     finishUpdate(p);
     renderToday(p);
   });
@@ -305,7 +361,7 @@ function renderToday(p) {
     const n = Math.max(0, (p.water[today] || 0) + Number(b.dataset.water));
     p.water[today] = n;
     haptic(8);
-    if (n === p.waterGoal && Number(b.dataset.water) > 0) { toast('💧 Trinkziel erreicht!'); confetti({ count: 50 }); }
+    if (n === p.waterGoal && Number(b.dataset.water) > 0) { toast('Trinkziel erreicht!'); confetti({ count: 50 }); }
     finishUpdate(p);
     renderToday(p);
   }));
@@ -328,7 +384,7 @@ function renderToday(p) {
 
 /** Tagesring: vier Segmente (Morgen, Abend, Gewohnheit, Trinken). */
 function dayRing(parts) {
-  const r = 46, c = 2 * Math.PI * r, gap = 10, seg = c / parts.length - gap;
+  const r = 47, c = 2 * Math.PI * r, gap = 9, seg = c / parts.length - gap;
   const done = parts.filter((x) => x.on).length;
   const arcs = parts.map((x, i) => {
     const off = -(i * (c / parts.length));
@@ -342,18 +398,18 @@ function dayRing(parts) {
 function programCard(p, today) {
   const st = programState(p.program);
   if (!st) {
-    return `<a class="card row" href="#/uebungen" style="text-decoration:none;color:inherit"><span class="tile-ico violet">🎓</span>
-      <span style="flex:1"><b>Programme entdecken</b><br><span class="small muted">Mit einem 6–8-Wochen-Plan ein klares Ziel erreichen – z. B. 30 Minuten am Stück gehen.</span></span><span aria-hidden="true">›</span></a>`;
+    return `<a class="card row link-card" href="#/uebungen">${icoTile('flag', 'violet')}
+      <span class="grow"><b>Programme entdecken</b><br><span class="small muted">Mit einem 6–8-Wochen-Plan ein klares Ziel erreichen – z. B. 30 Minuten am Stück gehen.</span></span><span class="chev">${ICON.chevron}</span></a>`;
   }
   const doneToday = p.sessions.some((s) => s.date === today && s.slot === 'program');
   const next = programSession(p.program);
   return `<section class="card prog-card">
-    <div class="card-head"><span class="tile-ico green">${st.prog.icon}</span><div><div class="eyebrow">Programm · ${esc(st.prog.goal)}</div><h3>${esc(st.prog.name)}</h3>
+    <div class="card-head">${icoTile('flag', 'green')}<div><div class="eyebrow">Programm · ${esc(st.prog.goal)}</div><h3>${esc(st.prog.name)}</h3>
       <div class="small muted">Woche ${st.week} von ${st.prog.weeks} · Einheit ${st.session} von 3</div></div></div>
     <div class="bar" style="margin:10px 0"><i style="width:${st.pct}%"></i></div>
     ${doneToday
-      ? '<p class="small muted" style="margin:0">✅ Heute erledigt. Gönn dir bis zur nächsten Einheit einen Tag Pause – Erholung gehört zum Plan.</p>'
-      : `<div class="row spread"><span>⏱ ca. ${next.minutes} Min</span><button class="btn" id="prog-start">Einheit starten</button></div>`}
+      ? '<p class="small muted" style="margin:0">Heute erledigt. Gönn dir bis zur nächsten Einheit einen Tag Pause – Erholung gehört zum Plan.</p>'
+      : `<div class="row spread"><span class="muted">ca. ${next.minutes} Min</span><button class="btn" id="prog-start">Starten</button></div>`}
   </section>`;
 }
 
@@ -361,9 +417,9 @@ function waterCard(p, today) {
   const n = p.water[today] || 0;
   const goal = p.waterGoal;
   return `<section class="card">
-    <div class="row spread"><div class="row"><span class="tile-ico blue">💧</span><div><div class="eyebrow">Trinken</div><b>${n} von ${goal} Gläsern</b></div></div>
-      <div class="row" style="gap:8px"><button class="icon-btn" data-water="-1" aria-label="Ein Glas weniger">−</button>
-      <button class="icon-btn primary" data-water="1" aria-label="Ein Glas mehr">+</button></div></div>
+    <div class="row spread"><div class="row">${icoTile('drop', 'blue')}<div><div class="eyebrow">Trinken</div><b>${n} von ${goal} Gläsern</b></div></div>
+      <div class="row" style="gap:8px"><button class="icon-btn" data-water="-1" aria-label="Ein Glas weniger">${ICON.minus}</button>
+      <button class="icon-btn primary" data-water="1" aria-label="Ein Glas mehr">${ICON.plus}</button></div></div>
     <div class="glasses" aria-hidden="true">${Array.from({ length: Math.max(goal, n) }, (_, i) => `<span class="${i < n ? 'full' : 'off'}"></span>`).join('')}</div>
   </section>`;
 }
@@ -375,11 +431,11 @@ function familyCard() {
   const f = familyProgress(s.profiles, goal);
   const max = Math.max(1, ...f.members.map((m) => m.minutes));
   return `<section class="card">
-    <div class="row"><span class="tile-ico orange">👨‍👩‍👧</span><div><div class="eyebrow">Familien-Challenge</div><b>${f.total} von ${f.goal} Min</b></div></div>
+    <div class="row">${icoTile('users', 'orange')}<div><div class="eyebrow">Familien-Challenge</div><b>${f.total} von ${f.goal} Min</b></div></div>
     <div class="bar" style="margin:8px 0"><i style="width:${f.pct}%"></i></div>
     ${f.members.map((m) => `<div class="member"><span>${m.emoji}</span><div><div class="small">${esc(m.name)}</div>
       <div class="bar" style="height:8px"><i style="width:${(m.minutes / max) * 100}%;opacity:.7"></i></div></div><span class="small">${m.minutes} Min</span></div>`).join('')}
-    <p class="small muted" style="margin:8px 0 0">${f.pct >= 100 ? '🎉 Geschafft – gemeinsam stark!' : 'Gemeinsames Ziel bis Sonntag. Jede Minute von jedem zählt.'}</p>
+    <p class="small muted" style="margin:8px 0 0">${f.pct >= 100 ? 'Geschafft – gemeinsam stark!' : 'Gemeinsames Ziel bis Sonntag. Jede Minute von jedem zählt.'}</p>
   </section>`;
 }
 
@@ -425,7 +481,7 @@ function startChallenge(p, slot) {
 function markDone(p, slot) {
   const today = toKey();
   const c = challengeFor(slot, today, p);
-  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">✓ Schon erledigt?</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Schon erledigt?</h2><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     <p class="muted">Super! Wir tragen „${esc(c.title)}“ mit ca. ${c.minutes} Min ein. Wie war's?</p>
     <div class="feedback">
       <button class="btn soft" data-fb="leicht">😌 Zu leicht – gerne mehr</button>
@@ -451,13 +507,13 @@ function showSwap(p, slot) {
     const c = challengeFor(slot, today, p);
     const ids = [...new Set(c.steps.map((s) => s.id))];
     const swapped = Object.keys(p.swaps?.[`${today}|${slot}`] || {}).length > 0;
-    const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">🔄 Übungen anpassen</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+    const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Übungen anpassen</h2><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
       <p class="muted small">Passt heute etwas nicht – weil ein Gelenk zwickt oder kein Stuhl da ist? Tausch die Übung gegen eine aus dem gleichen Bereich. Gilt nur für heute.</p>
       <ul class="log-list">${ids.map((id) => {
         const ex = byId[id];
         const amount = c.steps.find((s) => s.id === id).amount;
         return `<li><span><b>${ex.icon} ${esc(ex.name)}</b><br><span class="small muted">${CATEGORIES[ex.cat].label} · ${esc(fmtAmount(ex, amount))}</span></span>
-          ${canSwap(slot, today, p, id) ? `<button class="btn soft sm" data-sw="${id}" aria-label="${esc(ex.name)} tauschen">🔄 Tauschen</button>` : '<span class="small muted">keine Alternative</span>'}</li>`;
+          ${canSwap(slot, today, p, id) ? `<button class="btn soft sm" data-sw="${id}" aria-label="${esc(ex.name)} tauschen">${ICON.swap}Tauschen</button>` : '<span class="small muted">keine Alternative</span>'}</li>`;
       }).join('')}</ul>
       <div class="row" style="margin-top:16px">${swapped ? '<button class="btn ghost" id="sw-reset">Zurücksetzen</button>' : ''}<button class="btn" data-close style="flex:1">Fertig</button></div>`);
     $$('[data-sw]', sheet).forEach((b) => b.addEventListener('click', () => {
@@ -573,7 +629,7 @@ function showReview(p, start) {
   const s = weekStats(p, start);
   let next = suggestGoal(s);
   const tile = (v, l) => `<div class="stat"><b>${v}</b><span class="small muted">${l}</span></div>`;
-  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">📊 Dein Wochenrückblick</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Dein Wochenrückblick</h2><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     <p class="muted small">${formatDate(s.start, { day: 'numeric', month: 'long' })} – ${formatDate(s.end, { day: 'numeric', month: 'long' })}</p>
     <p><b>${esc(reviewMessage(s))}</b></p>
     <div class="stats">${tile(s.activeDays, `aktive Tage (Ziel ${s.goal})`)}${tile(s.minutes, 'Minuten')}${tile(s.sessions, 'Einheiten')}
@@ -641,7 +697,7 @@ function showProgram(p, id) {
   const pr = programById[id];
   const active = p.program?.id === id;
   const st = active ? programState(p.program) : null;
-  const sheet = openSheet(`<div class="row spread"><span style="font-size:3rem">${pr.icon}</span><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+  const sheet = openSheet(`<div class="row spread"><span style="font-size:3rem">${pr.icon}</span><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     <h2>${esc(pr.name)}</h2>
     <p>${esc(pr.desc)}</p>
     <div class="banner small"><b>🎯 Ziel:</b> ${esc(pr.goal)} · ${pr.weeks} Wochen · 3 Einheiten pro Woche<br>
@@ -673,7 +729,7 @@ function showProgram(p, id) {
 function showExercise(p, id) {
   const e = byId[id];
   const levels = e.base.map((v, k) => (v != null ? `<span class="chip">L${k + 1}: ${esc(fmtAmount(e, v))}</span>` : '')).join('');
-  const sheet = openSheet(`<div class="row spread"><span style="font-size:2rem">${e.icon}</span><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+  const sheet = openSheet(`<div class="row spread"><span style="font-size:2rem">${e.icon}</span><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     ${hasFigure(id) ? '<div class="fig-stage" id="ex-fig" style="margin-bottom:12px"></div>' : ''}
     <h2>${esc(e.name)}</h2>
     <p class="muted small">${CATEGORIES[e.cat].icon} ${CATEGORIES[e.cat].label} · ${POSITIONS[e.pos]}${e.perSide ? ' · je Seite' : ''}</p>
@@ -684,7 +740,7 @@ function showExercise(p, id) {
       <div class="card small"><b>⬆️ Schwerer</b><br>${esc(e.harder)}</div>
     </div>
     <h3 style="margin-top:16px">Menge je Level</h3><div class="chips">${levels}</div>
-    <button class="btn block" id="try">▶ Jetzt ausprobieren</button>`);
+    <button class="btn block" id="try">Jetzt ausprobieren</button>`);
   const stage = $('#ex-fig', sheet);
   if (stage) mountFigure(stage, id, { size: 220 });
   $('#try').addEventListener('click', () => {
@@ -714,7 +770,7 @@ function editSession(p, id) {
   const free = s.slot === 'extra'; // Morgen/Abend/Programm hängen am Tag
   let date = s.date;
   let fb = s.feedback || 'passt';
-  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Einheit bearbeiten</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Einheit bearbeiten</h2><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     <p class="muted small">${esc(s.title || SLOT_NAMES[s.slot])} · ${formatDate(s.date, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
     <div class="stack">
       <label class="field"><span>Minuten</span><input type="number" id="e-min" inputmode="numeric" min="1" max="600" value="${Math.max(1, Math.round((s.durationSec || 0) / 60))}"></label>
@@ -761,7 +817,7 @@ function renderProgress(p) {
   let body = '';
   if (progTab === 'overview') {
     body = `${renderDashboard(p)}
-      <button class="btn soft block" id="last-review" style="margin-top:16px">📊 Rückblick auf letzte Woche</button>
+      <button class="btn soft block" id="last-review" style="margin-top:16px">Rückblick auf letzte Woche</button>
       <section class="card" style="margin-top:16px"><h3>${showAllSessions ? 'Alle Einheiten' : 'Letzte Einheiten'}</h3>${p.sessions.length ? `<p class="small muted" style="margin:0 0 4px">Tippe auf eine Einheit, um sie zu ändern oder zu löschen.</p>
         <ul class="log-list sess-list">${(showAllSessions ? p.sessions : p.sessions.slice(-12)).slice().reverse().map((s) => `<li><button type="button" data-sess="${s.id}">
           <span>${formatDate(s.date)} · ${esc(s.title || SLOT_NAMES[s.slot] || s.slot)}${s.partial ? ' <span class="small muted">(Teil)</span>' : ''}</span>
@@ -805,7 +861,7 @@ function measurementsHTML(p) {
       <button class="btn" type="submit" aria-label="Speichern">+</button>
     </form>
     ${logKind === 'weight' ? '<p class="small muted" style="margin:8px 0 0">Tipp: Immer zur gleichen Zeit wiegen, z. B. morgens nach dem Aufstehen. Tagesschwankungen von 1–2 kg sind normal.</p>' : ''}
-    ${entries.length ? `<details id="log-all" style="margin-top:12px" ${logsOpen ? 'open' : ''}><summary>Alle Einträge (${entries.length})</summary><ul class="log-list">${entries.slice().reverse().map((e) => `<li><span>${formatDate(e.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</span><span><b>${e.value}</b> ${k.unit} <button class="btn ghost sm" data-del="${e.date}" aria-label="Eintrag vom ${formatDate(e.date)} löschen">✕</button></span></li>`).join('')}</ul></details>` : ''}
+    ${entries.length ? `<details id="log-all" style="margin-top:12px" ${logsOpen ? 'open' : ''}><summary>Alle Einträge (${entries.length})</summary><ul class="log-list">${entries.slice().reverse().map((e) => `<li><span>${formatDate(e.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</span><span><b>${e.value}</b> ${k.unit} <button class="btn ghost sm" data-del="${e.date}" aria-label="Eintrag vom ${formatDate(e.date)} löschen">${ICON.close}</button></span></li>`).join('')}</ul></details>` : ''}
   </section>`;
 }
 
@@ -871,10 +927,13 @@ function renderProfile(p) {
         </div>
         <label class="check"><input type="checkbox" id="notify" ${s.settings.notify && notifyState === 'granted' ? 'checked' : ''} ${notifyState === 'unsupported' || notifyState === 'denied' ? 'disabled' : ''}>
           <span>Benachrichtigung zur Erinnerungszeit<br><span class="small muted">${notifyState === 'denied' ? 'Benachrichtigungen sind im Browser blockiert – bitte dort erlauben.' : notifyState === 'unsupported' ? 'Dieser Browser unterstützt keine Benachrichtigungen.' : 'Funktioniert, solange Aufwind geöffnet ist (auch im Hintergrund). Für zuverlässige Erinnerungen zusätzlich den Kalender nutzen.'}</span></span></label>
-        <button class="btn soft" id="ics">📅 Kalender-Erinnerung herunterladen (.ics)</button>
+        <button class="btn soft" id="ics">Kalender-Erinnerung herunterladen (.ics)</button>
       </section>
 
       <section class="card stack"><h2>Einstellungen</h2>
+        <p class="small muted" style="margin:0">Gelten nur auf diesem Gerät.</p>
+        <div class="field"><span>Schriftgröße</span><div class="seg-ctl" role="radiogroup" aria-label="Schriftgröße">${Object.entries(FONT_SIZES).map(([k, v]) => `<button role="radio" aria-checked="${k === (s.settings.fontSize || 'normal')}" class="${k === (s.settings.fontSize || 'normal') ? 'on' : ''}" data-fs="${k}">${v.label}</button>`).join('')}</div></div>
+        <div class="field"><span>Pausen zwischen den Übungen</span><div class="seg-ctl" role="radiogroup" aria-label="Pausenlänge">${Object.entries(REST_LABELS).map(([k, v]) => `<button role="radio" aria-checked="${k === (s.settings.rest || 'normal')}" class="${k === (s.settings.rest || 'normal') ? 'on' : ''}" data-rest="${k}">${v}</button>`).join('')}</div></div>
         <label class="check"><input type="checkbox" id="set-speech" ${s.settings.speech ? 'checked' : ''}><span>Sprachansagen im Workout</span></label>
         <label class="check"><input type="checkbox" id="set-sound" ${s.settings.sound ? 'checked' : ''}><span>Signaltöne im Workout</span></label>
       </section>
@@ -883,15 +942,15 @@ function renderProfile(p) {
         ${s.profiles.map((x) => `<div class="row spread"><span>${x.emoji} ${esc(x.name)} ${x.id === p.id ? '<span class="small muted">(aktiv)</span>' : ''}</span>
           ${x.id === p.id ? '' : `<button class="btn soft sm" data-switch="${x.id}">Wechseln</button>`}</div>`).join('')}
         ${s.profiles.length > 1 ? `<label class="field"><span>👨‍👩‍👧 Gemeinsames Wochenziel (Minuten)</span><input type="number" id="fam-goal" inputmode="numeric" min="30" max="3000" step="10" value="${famGoal}"></label>` : '<p class="small muted" style="margin:0">Leg weitere Profile an, dann sammelt ihr in der Familien-Challenge gemeinsam Minuten.</p>'}
-        <a class="btn ghost" href="#/neu">➕ Profil hinzufügen</a>
+        <a class="btn ghost" href="#/neu">${ICON.plus}Profil hinzufügen</a>
       </section>
 
       ${syncSectionHTML()}
 
       <section class="card stack"><h2>Daten</h2>
         <p class="small muted" style="margin:0">Alles ist nur auf diesem Gerät gespeichert. Mach ab und zu eine Sicherung.</p>
-        <button class="btn soft" id="export">⬇️ Sicherung exportieren</button>
-        <label class="btn soft">⬆️ Sicherung importieren<input type="file" id="import" accept="application/json,.json" hidden></label>
+        <button class="btn soft" id="export">Sicherung exportieren</button>
+        <label class="btn soft">Sicherung importieren<input type="file" id="import" accept="application/json,.json" hidden></label>
         <button class="btn danger" id="delete">Profil „${esc(p.name)}“ löschen</button>
       </section>
 
@@ -925,6 +984,8 @@ function renderProfile(p) {
   });
   $('#ics').addEventListener('click', () => { saveRem(); download('aufwind-erinnerungen.ics', buildICS(p), 'text/calendar'); });
   $('#set-speech').addEventListener('change', (e) => { s.settings.speech = e.target.checked; store.save(); });
+  $$('[data-fs]').forEach((b) => b.addEventListener('click', () => { s.settings.fontSize = b.dataset.fs; applyFontSize(); store.save(); renderProfile(p); $(`[data-fs="${b.dataset.fs}"]`)?.focus(); }));
+  $$('[data-rest]').forEach((b) => b.addEventListener('click', () => { s.settings.rest = b.dataset.rest; store.save(); renderProfile(p); $(`[data-rest="${b.dataset.rest}"]`)?.focus(); }));
   $('#set-sound').addEventListener('change', (e) => { s.settings.sound = e.target.checked; store.save(); });
   $('#fam-goal')?.addEventListener('change', (e) => { const v = Number(e.target.value); if (v > 0) { s.settings.familyGoal = v; s.settings.familyGoalAt = new Date().toISOString(); store.save(); toast('Familienziel gespeichert'); } });
   $$('[data-switch]').forEach((b) => b.addEventListener('click', () => { store.switchProfile(b.dataset.switch); location.hash = '#/heute'; }));
@@ -994,10 +1055,10 @@ function syncStatusText(st = syncStatus()) {
 function syncSectionHTML() {
   const code = syncCode();
   return `<section class="card stack" id="sync-card">
-    <div class="card-head"><span class="tile-ico blue">🔄</span><div><h2>Handy & PC verbinden</h2><span class="small muted">Gleicher Stand auf allen Geräten – ohne Konto.</span></div></div>
+    <div class="card-head">${icoTile('swap', 'blue')}<div><h2>Handy & PC verbinden</h2><span class="small muted">Gleicher Stand auf allen Geräten – ohne Konto.</span></div></div>
     ${code ? `
       <p class="small" id="sync-status" style="margin:0">${syncStatusText()}</p>
-      <button class="btn" id="sync-show">📱 Weiteres Gerät verbinden</button>
+      <button class="btn" id="sync-show">Weiteres Gerät verbinden</button>
       <div class="grid2"><button class="btn soft" id="sync-now">Jetzt abgleichen</button><button class="btn ghost" id="sync-leave">Trennen</button></div>
     ` : `
       <button class="btn" id="sync-new">Sync einrichten</button>
@@ -1014,7 +1075,7 @@ function bindSyncSection(p) {
   $('#sync-new')?.addEventListener('click', async (e) => {
     e.target.disabled = true;
     e.target.textContent = 'Richte ein …';
-    try { await setupSync(); toast('🔄 Sync eingerichtet'); renderProfile(p); showSyncCode(); }
+    try { await setupSync(); toast('Sync eingerichtet'); renderProfile(p); showSyncCode(); }
     catch (err) { toast(err.message, 4500); e.target.disabled = false; e.target.textContent = 'Sync einrichten'; }
   });
   $('#sync-join')?.addEventListener('click', () => showJoin());
@@ -1031,11 +1092,11 @@ async function showSyncCode() {
   const code = syncCode();
   if (!code) return;
   const link = syncLink(code);
-  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Weiteres Gerät verbinden</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Weiteres Gerät verbinden</h2><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     <p class="muted small">Scanne den QR-Code mit dem anderen Gerät – oder gib dort unter <b>Profil → Handy & PC verbinden → Ich habe schon einen Code</b> diesen Code ein:</p>
     <div class="card center" id="qr" style="max-width:260px;margin:0 auto;padding:12px;background:#fff">Lade QR-Code …</div>
     <p class="center" style="font-family:ui-monospace,monospace;font-weight:700;font-size:1.05rem;letter-spacing:.04em;margin:16px 0 8px">${formatCode(code)}</p>
-    <button class="btn soft block" id="copy-link">🔗 Link kopieren</button>
+    <button class="btn soft block" id="copy-link">Link kopieren</button>
     <p class="small muted" style="margin-top:12px">⚠️ Wer diesen Code hat, kann deine Daten sehen und ändern. Teile ihn nur mit deinen eigenen Geräten oder deiner Familie.</p>`);
   try { $('#qr', sheet).innerHTML = await qrSVG(link); } catch (e) { $('#qr', sheet).textContent = e.message; }
   $('#copy-link', sheet).addEventListener('click', async () => {
@@ -1044,7 +1105,7 @@ async function showSyncCode() {
 }
 
 function showJoin(prefill = '') {
-  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Mit Code verbinden</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Mit Code verbinden</h2><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     <p class="muted small">Den Code findest du auf dem ersten Gerät unter <b>Profil → Handy & PC verbinden → Weiteres Gerät verbinden</b>.</p>
     <label class="field"><span>Sync-Code</span><input type="text" id="join-code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-…" value="${esc(formatCode(prefill))}"></label>
     <p class="small muted">Profile, die schon auf diesem Gerät sind, werden mit dem gemeinsamen Stand zusammengeführt – es geht nichts verloren.</p>
@@ -1056,7 +1117,7 @@ function showJoin(prefill = '') {
     try {
       await joinSync($('#join-code', sheet).value);
       closeSheet();
-      toast('🔄 Verbunden – dein Stand ist jetzt auf diesem Gerät.', 4000);
+      toast('Verbunden – dein Stand ist jetzt auf diesem Gerät.', 4000);
       confetti({ count: 60 });
       location.hash = store.activeProfile() ? '#/heute' : '#/neu';
       route();
@@ -1089,6 +1150,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   }).catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) showUpdateBar(); });
 }
+applyFontSize();
 route();
 startReminders();
 startSync(onRemoteChange);

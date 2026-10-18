@@ -181,6 +181,14 @@ try {
   await click('#overlay [data-close].btn'); await sleep(300);
   await click('[data-start="evening"]'); await sleep(200);
   await click('[data-act="start"]'); await sleep(200);
+  await click(await exists('[data-act="next"]') ? '[data-act="next"]' : '[data-act="skip"]'); await sleep(900);
+  // v0.5.0: Pause mit Vorschau der nächsten Übung, +15 s und Zurück
+  const restBefore = await ev(`document.querySelector('.player .count')?.textContent`);
+  await click('[data-act="more"]'); await sleep(300);
+  log('Pause:', restBefore, '→ +15 s:', await ev(`document.querySelector('.player .count')?.textContent`), '· Vorschau-Figur:', await exists('#fig-next svg'));
+  await shot('26-pause-vorschau', false);
+  await click('[data-act="back"]'); await sleep(300);
+  log('Zurück → Phase Übung:', await exists('#fig'), await ev(`document.querySelector('.player h1')?.textContent`));
   await click(await exists('[data-act="next"]') ? '[data-act="next"]' : '[data-act="skip"]'); await sleep(200);
   await click('[data-act="quit"]'); await sleep(200);
   await shot('21-abbrechen-teil', false);
@@ -210,6 +218,26 @@ try {
   const w1 = (await prof0()).logs.weight.length;
   await click('#toast button'); await sleep(300);
   log('Messwert gelöscht → rückgängig:', w1, '→', (await prof0()).logs.weight.length, '· Liste offen:', await ev(`document.querySelector('#log-all')?.open`));
+
+  // 5c) v0.5.0: Gewohnheit tauschen, Profil-Schnellwechsel, Schriftgröße
+  await nav('#/heute');
+  if (await ev(`document.querySelector('#habit').checked`)) { await click('#habit'); await sleep(200); } // „Andere“ nur, solange nicht abgehakt
+  const h0 =await ev(`document.querySelector('#habit + span b').textContent`);
+  await click('#habit-swap'); await sleep(200);
+  log('Gewohnheit getauscht:', h0 !== (await ev(`document.querySelector('#habit + span b').textContent`)));
+  log('Reihenfolge Heute:', await ev(`[...document.querySelectorAll('.session')].map((c) => c.className.replace('card session ', '')).join(' | ')`));
+  await click('#avatar'); await sleep(300);
+  await shot('27-profile', false);
+  await click('[data-pick]:not(.on)'); await sleep(400);
+  log('Profil gewechselt zu:', await ev(`document.querySelector('.greet h1').textContent`));
+  await click('#avatar'); await sleep(300); await click('[data-pick]:not(.on)'); await sleep(400);
+  await nav('#/profil');
+  await click('[data-fs="sehrgross"]'); await sleep(300);
+  log('Schriftgröße:', await ev(`getComputedStyle(document.body).fontSize`));
+  await nav('#/heute');
+  await shot('28-heute-gross');
+  await nav('#/profil');
+  await click('[data-fs="normal"]'); await sleep(200);
 
   // 6) Dunkelmodus
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
