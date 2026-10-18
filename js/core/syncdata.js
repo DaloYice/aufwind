@@ -1,6 +1,7 @@
 // Sync-Kern ohne Browser-Abhängigkeiten: Code, Verschlüsselung, Zusammenführen.
 // Läuft im Browser und in Node (WebCrypto über globalThis.crypto).
 import { normalizeRecords, mergeRemoved, mergeSessions, mergeLogs } from './records.js';
+import { mergeExLog } from './exlog.js';
 
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const enc = new TextEncoder();
@@ -86,6 +87,8 @@ export function mergeProfile(x, y) {
   p.sessions = mergeSessions(newer.sessions, older.sessions, p.removedAt);
   p.swaps = { ...(older.swaps || {}), ...(newer.swaps || {}) };
   p.habitSwap = { ...(older.habitSwap || {}), ...(newer.habitSwap || {}) };
+  p.checkins = { ...(older.checkins || {}), ...(newer.checkins || {}) };
+  p.exLog = mergeExLog(newer.exLog, older.exLog);
   p.habits = { ...(older.habits || {}), ...(newer.habits || {}) };
   p.water = { ...(older.water || {}) };
   for (const [d, n] of Object.entries(newer.water || {})) p.water[d] = Math.max(n, p.water[d] || 0);

@@ -1,6 +1,7 @@
 // Tägliche Challenges: pro Tag und Profil stabil (deterministischer Zufall).
 import { byId, forLevel } from '../data/exercises.js';
 import { HABITS, TIPS } from '../data/habits.js';
+import { checkinOf, avoids, energyFactor, adaptText } from './checkin.js';
 
 export function hashString(s) {
   let h = 2166136261;
@@ -29,8 +30,8 @@ function pick(list, rand, exclude = new Set()) {
   return e;
 }
 
-const REST = [30, 25, 20, 15, 15];
-const MORNING_EXCLUDE = ['gehen', 'treppe', 'pmr', 'dankbarkeit'];
+export const REST = [30, 25, 20, 15, 15];
+export const MORNING_EXCLUDE = ['gehen', 'treppe', 'pmr', 'dankbarkeit'];
 const ROUNDS = [1, 1, 2, 2, 3];
 
 // Abend-Themen rotieren, damit nicht jeder Tag gleich ist.
@@ -63,7 +64,7 @@ function buildSteps(ids, level, intensity, rounds) {
   return steps;
 }
 
-function summarize(slot, title, icon, steps, rest, rounds) {
+export function summarize(slot, title, icon, steps, rest, rounds) {
   const work = steps.reduce((s, it) => s + exerciseSeconds(it), 0);
   const durationSec = work + rest * Math.max(0, steps.length - 1);
   return { slot, title, icon, steps, rest, rounds, durationSec, minutes: Math.max(1, Math.round(durationSec / 60)) };
@@ -120,8 +121,41 @@ export function tipOfDay(dateKey) {
 }
 
 export function challengeFor(slot, dateKey, profile) {
-  const c = slot === 'morning' ? morningChallenge(dateKey, profile) : eveningChallenge(dateKey, profile);
-  return applySwaps(c, profile.swaps?.[`${dateKey}|${slot}`], profile);
+  const ci = checkinOf(profile, dateKey);
+  // Wenig Energie → kleinere Mengen (über die Intensität, damit Tausch und Anpassung dieselbe Menge rechnen)
+  const prof = ci?.energy === 1 ? { ...profile, intensity: (profile.intensity ?? 1) * energyFactor(ci) } : profile;
+  const base = slot === 'morning' ? morningChallenge(dateKey, prof) : eveningChallenge(dateKey, prof);
+  // Erst ans Befinden anpassen, dann die eigenen Tausch-Wünsche (die sich auf die angepasste Einheit beziehen)
+  const c = applySwaps(adaptToCheckin(base, slot, dateKey, prof, ci), profile.swaps?.[`${dateKey}|${slot}`], prof);
+  return ci ? { ...c, adapted: adaptText(ci) } : c;
+}
+
+/** Übungen, die eine Region mit Beschwerden belasten, durch schonende aus dem gleichen Bereich ersetzen (oder weglassen). */
+function adaptToCheckin(c, slot, dateKey, profile, ci) {
+  if (!ci) return c;
+  const bad = [...new Set(c.steps.map((s) => s.id))].filter((id) => avoids(ci, id));
+  if (!bad.length) return c;
+  const rand = rng(hashString(`${dateKey}|${profile.id}|${slot}|adapt`));
+  const inUse = new Set(c.steps.map((s) => s.id));
+  const excluded = slot === 'morning' ? MORNING_EXCLUDE : ['dankbarkeit'];
+  const map = {};
+  for (const id of bad) {
+    const ex = byId[id];
+    const opts = forLevel(profile.level, ex.cat).filter((e) => !avoids(ci, e.id) && !inUse.has(e.id) && !excluded.includes(e.id) && (slot !== 'morning' || e.pos !== 'boden'));
+    if (opts.length) {
+      const to = opts[Math.floor(rand() * opts.length)];
+      map[id] = to.id;
+      inUse.add(to.id);
+    } else map[id] = null;
+  }
+  let steps = c.steps.filter((s) => map[s.id] !== null).map((s) => {
+    const to = map[s.id];
+    if (!to) return s;
+    const ex = byId[to];
+    return { ...s, id: to, amount: amountFor(ex, profile.level, ex.cat === 'entspannung' ? 1 : profile.intensity ?? 1) };
+  });
+  if (!steps.length) steps = [{ id: 'bauchatmung', amount: amountFor(byId.bauchatmung, profile.level, 1), round: 1 }];
+  return summarize(c.slot, c.title, c.icon, steps, c.rest, c.rounds);
 }
 
 // ---------- Übung tauschen ----------
@@ -144,7 +178,8 @@ export function swapOptions(slot, dateKey, profile, currentId) {
   const c = challengeFor(slot, dateKey, profile);
   const inUse = new Set(c.steps.map((s) => s.id));
   const excluded = slot === 'morning' ? MORNING_EXCLUDE : ['dankbarkeit'];
-  return forLevel(profile.level, ex.cat).filter((e) => !excluded.includes(e.id) && (slot !== 'morning' || e.pos !== 'boden')
+  const ci = checkinOf(profile, dateKey);
+  return forLevel(profile.level, ex.cat).filter((e) => !excluded.includes(e.id) && (slot !== 'morning' || e.pos !== 'boden') && !avoids(ci, e.id)
     && (e.id === currentId || !inUse.has(e.id)));
 }
 

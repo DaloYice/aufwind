@@ -6,6 +6,10 @@ import { toKey, addDays, fromKey, formatDate } from './core/dates.js';
 import { LEVELS, QUESTIONS, HEALTH_FLAGS, assess, bmi, bmiClass } from './core/assessment.js';
 import { challengeFor, habitOfDay, swapHabit, tipOfDay, exerciseSeconds, canSwap, swapExercise } from './core/challenges.js';
 import { ICON, icoTile } from './icons.js';
+import { customWorkout } from './core/custom.js';
+import { recordExercises, exStats } from './core/exlog.js';
+import { checkinOf } from './core/checkin.js';
+import { FOCUS, QUICK_MINUTES, PAIN_LABELS } from './data/focus.js';
 import { addSession, updateSession, removeSession, restoreSession } from './core/records.js';
 import { streak, adjustIntensity, levelSuggestion, awardBadges, BADGES } from './core/progress.js';
 import { weekStart, weekStats, weekGoal, reviewDue, suggestGoal, reviewMessage, familyProgress, defaultFamilyGoal } from './core/week.js';
@@ -18,8 +22,8 @@ import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported } from './reminders.js';
 
-const VERSION = '0.5.0';
-const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung' };
+const VERSION = '0.6.0';
+const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung', custom: 'Training nach Wunsch' };
 const view = $('#view');
 const tabbar = $('#tabbar');
 const EMOJIS = ['🙂', '😎', '🦊', '🐻', '🐢', '🦁', '🐱', '🌻', '⭐', '🚀', '🌈', '💪'];
@@ -281,6 +285,7 @@ function renderToday(p) {
       <div class="session-top">
         <div class="grow"><div class="slot-label">${ICON[SLOT[slot].icon]}${SLOT[slot].label}${p.plan?.[slot] ? `<span class="muted"> · ${esc(p.plan[slot])}</span>` : ''}</div>
           <h2>${esc(c.title)}</h2>
+          ${c.adapted ? `<div class="adapt-note">${ICON.heart}Angepasst: ${esc(c.adapted)}</div>` : ''}
           <div class="meta">${part ? `Teilweise geschafft · ${Math.max(1, Math.round(d.durationSec / 60))} Min` : `${c.minutes} Min · ${ids.length} Übungen${c.rounds > 1 ? ` · ${c.rounds} Runden` : ''}`}</div></div>
         <div class="session-fig" data-fig="${figId}">${part ? '<span class="part-badge" aria-label="teilweise erledigt">½</span>' : ''}</div>
       </div>
@@ -320,6 +325,7 @@ function renderToday(p) {
         <div class="ring-legend">${parts.map((x) => `<span class="${x.on ? 'on' : ''}"><i style="--c:${x.color}"></i>${x.label}</span>`).join('')}</div>
         <div class="week" aria-label="Letzte 7 Tage">${week}</div>
       </section>
+      ${checkinCard(p, today)}
       ${review ? `<div class="banner row spread"><span><b>Dein Wochenrückblick ist da</b><br><span class="small muted">Schau, was du letzte Woche geschafft hast.</span></span><button class="btn sm" id="review">Ansehen</button></div>` : ''}
       ${sugg === 'up' ? `<div class="banner"><b>Bereit für mehr?</b><p class="small">Die Challenges fallen dir zuletzt leicht. Möchtest du auf Level ${p.level + 1} (${esc(LEVELS[p.level].name)}) wechseln?</p>
         <div class="row"><button class="btn sm" data-level="${p.level + 1}">Ja, Level ${p.level + 1}</button><button class="btn ghost sm" data-dismiss>Noch nicht</button></div></div>` : ''}
@@ -336,13 +342,14 @@ function renderToday(p) {
       </section>
       ${waterCard(p, today)}
       ${familyCard(p)}
-      <button class="btn soft block" id="extra">${ICON.plus}Andere Bewegung eintragen</button>
+      <div class="grid2"><a class="btn soft" href="#/uebungen">${ICON.flag}Schnell trainieren</a><button class="btn soft" id="extra">${ICON.plus}Bewegung eintragen</button></div>
       <section class="card"><div class="card-head">${icoTile('bulb', 'orange')}<div class="eyebrow">Wusstest du?</div></div><p style="margin:0">${esc(tipOfDay(today))}</p></section>
       <p class="center small muted">Level ${p.level} · ${esc(L.name)} · Intensität ${Math.round(p.intensity * 100)} %</p>
     </div>`;
 
   $$('[data-fig]').forEach((el) => renderStatic(el, el.dataset.fig, 1, 76));
   $('#avatar').addEventListener('click', () => showProfiles(p));
+  bindCheckin(p, today);
   $('#habit-swap')?.addEventListener('click', () => {
     swapHabit(p, today);
     store.save();
@@ -380,6 +387,59 @@ function renderToday(p) {
   $('#review')?.addEventListener('click', () => showReview(p, review));
   $('#prog-start')?.addEventListener('click', () => startProgramSession(p));
   $('#extra').addEventListener('click', () => extraActivity(p));
+}
+
+// ---------- Befinden ----------
+const ENERGY = { 1: 'Wenig', 2: 'Normal', 3: 'Viel' };
+const MOOD = { 1: 'Mies', 2: 'Okay', 3: 'Gut' };
+let checkinEdit = false;
+
+function checkinCard(p, today) {
+  const ci = checkinOf(p, today);
+  if (ci && !checkinEdit) {
+    if (ci.skipped) return `<button type="button" class="card row link-card checkin-mini" id="ci-edit">${icoTile('heart', 'green')}<span class="grow">Wie geht's dir heute? <span class="muted">Eintragen</span></span><span class="chev">${ICON.chevron}</span></button>`;
+    const parts = [`Energie ${ENERGY[ci.energy].toLowerCase()}`, `Stimmung ${MOOD[ci.mood].toLowerCase()}`, ...(ci.pain || []).map((r) => PAIN_LABELS[r])];
+    return `<section class="card checkin-mini">
+      <div class="row">${icoTile('heart', 'green')}<div class="grow"><div class="eyebrow">Befinden heute</div><b>${esc(parts.join(' · '))}</b></div><button type="button" class="link-btn" id="ci-edit">Ändern</button></div>
+      ${ci.pain?.length ? '<p class="small muted" style="margin:8px 0 0">Die Übungen schonen das heute. Bei starken, neuen oder zunehmenden Schmerzen: Pause machen und ärztlich abklären.</p>' : ''}
+    </section>`;
+  }
+  const cur = ci && !ci.skipped ? ci : { energy: 2, mood: 2, pain: [] };
+  const group = (key, map, val) => `<div class="chips-select" role="radiogroup" data-group="${key}">${Object.entries(map).map(([k, l]) => `<button type="button" role="radio" aria-checked="${Number(k) === val}" class="${Number(k) === val ? 'selected' : ''}" data-v="${k}">${l}</button>`).join('')}</div>`;
+  return `<section class="card checkin" id="checkin">
+    <div class="card-head">${icoTile('heart', 'green')}<div class="grow"><h3>Wie geht's dir heute?</h3><span class="small muted">Dann passen wir die Übungen an.</span></div></div>
+    <div class="field"><span>Energie</span>${group('energy', ENERGY, cur.energy)}</div>
+    <div class="field"><span>Stimmung</span>${group('mood', MOOD, cur.mood)}</div>
+    <div class="field"><span>Beschwerden heute?</span><div class="chips-select" role="group" data-group="pain">${Object.entries(PAIN_LABELS).map(([k, l]) => `<button type="button" aria-pressed="${cur.pain.includes(k)}" class="${cur.pain.includes(k) ? 'selected' : ''}" data-v="${k}">${l}</button>`).join('')}</div></div>
+    <div class="row" style="margin-top:4px"><button type="button" class="btn ghost" id="ci-skip">${ci ? 'Abbrechen' : 'Überspringen'}</button><button type="button" class="btn grow" id="ci-save">Speichern</button></div>
+  </section>`;
+}
+
+function bindCheckin(p, today) {
+  $('#ci-edit')?.addEventListener('click', () => { checkinEdit = true; renderToday(p); $('#checkin [data-v]')?.focus(); });
+  const card = $('#checkin');
+  if (!card) return;
+  $$('[data-group="energy"] [data-v], [data-group="mood"] [data-v]', card).forEach((b) => b.addEventListener('click', () => {
+    $$('[data-v]', b.parentElement).forEach((x) => { x.classList.toggle('selected', x === b); x.setAttribute('aria-checked', String(x === b)); });
+  }));
+  $$('[data-group="pain"] [data-v]', card).forEach((b) => b.addEventListener('click', () => {
+    b.classList.toggle('selected');
+    b.setAttribute('aria-pressed', String(b.classList.contains('selected')));
+  }));
+  const val = (g) => Number($(`[data-group="${g}"] .selected`, card)?.dataset.v || 2);
+  $('#ci-save', card).addEventListener('click', () => {
+    const pain = $$('[data-group="pain"] .selected', card).map((b) => b.dataset.v);
+    p.checkins[today] = { energy: val('energy'), mood: val('mood'), pain, at: new Date().toISOString() };
+    checkinEdit = false;
+    store.save();
+    renderToday(p);
+    toast(pain.length ? `Danke – heute schonen wir ${pain.map((r) => PAIN_LABELS[r]).join(', ')}.` : val('energy') === 1 ? 'Danke – heute etwas leichter. Jede Bewegung zählt.' : 'Danke! Viel Spaß heute.', 3500);
+  });
+  $('#ci-skip', card).addEventListener('click', () => {
+    if (!checkinOf(p, today)) { p.checkins[today] = { skipped: true, at: new Date().toISOString() }; store.save(); }
+    checkinEdit = false;
+    renderToday(p);
+  });
 }
 
 /** Tagesring: vier Segmente (Morgen, Abend, Gewohnheit, Trinken). */
@@ -457,11 +517,25 @@ function feedbackToast(fb) {
   toast(fb === 'schwer' ? 'Danke! Beim nächsten Mal wird es etwas sanfter. 💚' : fb === 'leicht' ? 'Notiert – nächstes Mal legen wir etwas drauf! 💪' : 'Super! Weiter so. ✨');
 }
 
+/** Geschaffte Sätze in den Übungsverlauf schreiben und neue Bestwerte feiern. */
+function recordDone(p, res) {
+  const recs = recordExercises(p, toKey(), res?.done);
+  recs.slice(0, 2).forEach((r, k) => setTimeout(() => {
+    const ex = byId[r.id];
+    toast(`Neuer Bestwert: ${ex.name} ${r.amount}${ex.unit === 'wdh' ? '×' : ' s'} (vorher ${r.prev})`, 3800);
+    if (k === 0) confetti({ count: 70 });
+  }, 3000 + k * 4000));
+}
+
+/** Player-Optionen mit „Letztes Mal / Bestwert“ aus dem Verlauf. */
+const playerOpts = (p, extra = {}) => ({ history: (id) => exStats(p, id), ...extra });
+
 function startChallenge(p, slot) {
   const today = toKey();
   const c = challengeFor(slot, today, p);
   runPlayer(c, store.getState().settings, (res) => {
     if (!res) return;
+    recordDone(p, res);
     if (res.partial) {
       const { added } = addSession(p, { date: today, slot, partial: true, feedback: 'passt', durationSec: res.durationSec, title: c.title, cats: catSeconds(c, res.durationSec) });
       finishUpdate(p);
@@ -474,7 +548,7 @@ function startChallenge(p, slot) {
     finishUpdate(p);
     renderToday(p);
     feedbackToast(res.feedback);
-  }, { allowPartial: true });
+  }, playerOpts(p, { allowPartial: true }));
 }
 
 /** Challenge ohne geführten Modus als erledigt eintragen (z. B. ohne Handy gemacht). */
@@ -545,6 +619,7 @@ function startProgramSession(p) {
   runPlayer(c, store.getState().settings, (res) => {
     if (!res) return;
     const today = toKey();
+    recordDone(p, res);
     if (res.partial) {
       // Teil-Einheit zählt als Bewegung, schaltet das Programm aber nicht weiter
       addSession(p, { date: today, slot: 'extra', partial: true, feedback: 'passt', durationSec: res.durationSec, title: `${c.title} (Teil)`, cats: catSeconds(c, res.durationSec) });
@@ -564,7 +639,20 @@ function startProgramSession(p) {
     finishUpdate(p);
     renderToday(p);
     if (!st.finished) feedbackToast(res.feedback);
-  }, { allowPartial: true });
+  }, playerOpts(p, { allowPartial: true }));
+}
+
+/** Wunsch-Training aus „Schnell trainieren“. */
+function startCustom(p, c) {
+  runPlayer(c, store.getState().settings, (res) => {
+    if (!res) return;
+    recordDone(p, res);
+    addSession(p, { date: toKey(), slot: 'custom', ...(res.partial ? { partial: true } : {}), feedback: res.feedback, durationSec: res.durationSec, title: c.title, cats: catSeconds(c, res.durationSec) });
+    finishUpdate(p);
+    if (currentRoute === 'uebungen') renderLibrary(p);
+    if (res.partial) toast('Gespeichert – jede Minute zählt 💚');
+    else feedbackToast(res.feedback);
+  }, playerOpts(p, { allowPartial: true }));
 }
 
 const EXTRA_KINDS = [['🚶 Spaziergang', 'ausdauer'], ['🚴 Radfahren', 'ausdauer'], ['🏊 Schwimmen / Aqua', 'ausdauer'], ['💃 Tanzen', 'ausdauer'], ['🧘 Yoga', 'mobil'],
@@ -658,9 +746,26 @@ function showReview(p, start) {
 
 // ---------- Übungen & Programme ----------
 let libFilter = { cat: '', mine: true };
+let quick = { minutes: 10, focus: 'ganzkoerper', mix: 0 };
+
+function quickHTML(p, c) {
+  const ids = [...new Set(c.steps.map((x) => x.id))];
+  const ci = checkinOf(p, toKey());
+  return `<section class="card quick">
+    <div class="card-head">${icoTile('flag', 'green')}<div class="grow"><h2 style="margin:0">Schnell trainieren</h2><span class="small muted">Wie viel Zeit hast du – und worauf hast du Lust?</span></div></div>
+    <div class="seg-ctl" role="radiogroup" aria-label="Dauer">${QUICK_MINUTES.map((m) => `<button role="radio" aria-checked="${m === quick.minutes}" class="${m === quick.minutes ? 'on' : ''}" data-qmin="${m}">${m} Min</button>`).join('')}</div>
+    <div class="chips-select" role="radiogroup" aria-label="Schwerpunkt">${Object.entries(FOCUS).map(([k, f]) => `<button type="button" role="radio" aria-checked="${k === quick.focus}" class="${k === quick.focus ? 'selected' : ''}" data-qfocus="${k}">${ICON[f.icon]}${f.label}</button>`).join('')}</div>
+    <p class="ex-line">${ids.map((id) => esc(byId[id].name)).join(' · ')}</p>
+    ${ci?.pain?.length || ci?.energy === 1 ? `<div class="adapt-note">${ICON.heart}Angepasst an dein Befinden</div>` : ''}
+    <div class="session-foot"><button type="button" class="link-btn" id="q-mix">${ICON.swap}Neu mischen</button><button class="btn" id="q-go">Starten · ${c.minutes} Min</button></div>
+  </section>`;
+}
+
 function renderLibrary(p) {
   const list = EXERCISES.filter((e) => !e.programOnly && (!libFilter.cat || e.cat === libFilter.cat) && (!libFilter.mine || e.base[p.level - 1] != null));
-  view.innerHTML = `<h1>Programme</h1>
+  const qc = customWorkout(quick, p, toKey());
+  view.innerHTML = `${quickHTML(p, qc)}
+    <h1 style="margin-top:28px">Programme</h1>
     <p class="small muted">Mehrwochen-Pläne mit 3 Einheiten pro Woche und einem klaren Ziel.</p>
     <div class="ex-list">${PROGRAMS.map((pr) => {
       const active = p.program?.id === pr.id;
@@ -681,6 +786,10 @@ function renderLibrary(p) {
       <span class="small muted">${e.base[p.level - 1] != null ? esc(fmtAmount(e, e.base[p.level - 1])) : `ab L${e.base.findIndex((v) => v != null) + 1}`}</span></button>`).join('')}</div>`;
 
   $('[data-mine]').addEventListener('click', () => { libFilter.mine = !libFilter.mine; renderLibrary(p); });
+  $$('[data-qmin]').forEach((b) => b.addEventListener('click', () => { quick.minutes = Number(b.dataset.qmin); renderLibrary(p); $(`[data-qmin="${quick.minutes}"]`)?.focus(); }));
+  $$('[data-qfocus]').forEach((b) => b.addEventListener('click', () => { quick.focus = b.dataset.qfocus; renderLibrary(p); $(`[data-qfocus="${quick.focus}"]`)?.focus(); }));
+  $('#q-mix').addEventListener('click', () => { quick.mix++; renderLibrary(p); $('#q-mix')?.focus(); });
+  $('#q-go').addEventListener('click', () => startCustom(p, qc));
   $$('[data-cat]').forEach((b) => b.addEventListener('click', () => { libFilter.cat = b.dataset.cat; renderLibrary(p); }));
   $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex)));
   $$('[data-prog]').forEach((b) => b.addEventListener('click', () => showProgram(p, b.dataset.prog)));
@@ -728,6 +837,9 @@ function showProgram(p, id) {
 
 function showExercise(p, id) {
   const e = byId[id];
+  const st = exStats(p, id);
+  const short = (n) => (e.unit === 'wdh' ? `${n}×` : `${n} s`);
+  const tile = (v, l) => `<div class="stat"><b>${v}</b><span class="small muted">${l}</span></div>`;
   const levels = e.base.map((v, k) => (v != null ? `<span class="chip">L${k + 1}: ${esc(fmtAmount(e, v))}</span>` : '')).join('');
   const sheet = openSheet(`<div class="row spread"><span style="font-size:2rem">${e.icon}</span><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     ${hasFigure(id) ? '<div class="fig-stage" id="ex-fig" style="margin-bottom:12px"></div>' : ''}
@@ -739,6 +851,9 @@ function showExercise(p, id) {
       <div class="card small"><b>⬇️ Leichter</b><br>${esc(e.easier)}</div>
       <div class="card small"><b>⬆️ Schwerer</b><br>${esc(e.harder)}</div>
     </div>
+    ${st ? `<h3 style="margin-top:16px">Dein Verlauf</h3>
+      <div class="stats">${tile(short(st.best), 'Bestwert')}${tile(short(st.last), 'letztes Mal')}${tile(st.days, st.days === 1 ? 'Tag' : 'Tage')}</div>
+      ${st.list.length > 1 ? `<div style="margin-top:8px">${lineChart(st.list.map((x) => ({ date: x.date, value: x.best })), { unit: e.unit === 'wdh' ? '×' : 's' })}</div>` : ''}` : ''}
     <h3 style="margin-top:16px">Menge je Level</h3><div class="chips">${levels}</div>
     <button class="btn block" id="try">Jetzt ausprobieren</button>`);
   const stage = $('#ex-fig', sheet);
@@ -746,7 +861,11 @@ function showExercise(p, id) {
   $('#try').addEventListener('click', () => {
     closeSheet();
     const amount = e.base[p.level - 1] ?? e.base.find((v) => v != null);
-    runPlayer({ title: e.name, icon: e.icon, steps: [{ id, amount, round: 1 }], rest: 0, rounds: 1, minutes: 1 }, store.getState().settings, () => {});
+    runPlayer({ title: e.name, icon: e.icon, steps: [{ id, amount, round: 1 }], rest: 0, rounds: 1, minutes: 1 }, store.getState().settings, (res) => {
+      if (!res) return;
+      recordDone(p, res);
+      store.save();
+    }, playerOpts(p));
   });
 }
 
@@ -812,7 +931,7 @@ function editSession(p, id) {
 }
 
 function renderProgress(p) {
-  const tabs = [['overview', 'Überblick'], ['werte', 'Messwerte'], ['abzeichen', 'Abzeichen']];
+  const tabs = [['overview', 'Überblick'], ['werte', 'Werte'], ['rekorde', 'Bestwerte'], ['abzeichen', 'Abzeichen']];
   const earned = Object.keys(p.badges || {}).length;
   let body = '';
   if (progTab === 'overview') {
@@ -825,6 +944,17 @@ function renderProgress(p) {
         ${p.sessions.length > 12 ? `<button class="btn ghost sm block" id="sess-all" style="margin-top:8px">${showAllSessions ? 'Weniger anzeigen' : `Alle ${p.sessions.length} anzeigen`}</button>` : ''}` : '<p class="muted">Noch keine Einheiten – deine erste Challenge wartet unter „Heute“.</p>'}</section>`;
   } else if (progTab === 'werte') {
     body = measurementsHTML(p);
+  } else if (progTab === 'rekorde') {
+    const rows = Object.keys(p.exLog || {}).filter((id) => byId[id]).map((id) => ({ id, ...exStats(p, id) })).filter((r) => r.days)
+      .sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+    const short = (ex, n) => (ex.unit === 'wdh' ? `${n}×` : `${n} s`);
+    body = rows.length ? `<p class="small muted">Deine beste Menge je Übung in einem Durchgang. Wiederholungen kannst du im Training mit − und + anpassen.</p>
+      <div class="ex-list">${rows.map((r) => {
+        const ex = byId[r.id];
+        return `<button class="ex-item" data-ex="${r.id}"><span class="ico">${ex.icon}</span>
+          <span class="grow"><b>${esc(ex.name)}</b><br><span class="small muted">an ${r.days} ${r.days === 1 ? 'Tag' : 'Tagen'} · zuletzt ${formatDate(r.lastDate)}${r.last < r.best ? ` (${short(ex, r.last)})` : ''}</span></span>
+          <span class="best"><b>${short(ex, r.best)}</b><span class="small muted">Bestwert</span></span></button>`;
+      }).join('')}</div>` : '<section class="card"><p class="muted" style="margin:0">Noch keine Bestwerte. Sobald du Übungen im Training machst, siehst du hier, was du schon schaffst – und wie es mehr wird.</p></section>';
   } else {
     body = `<p class="muted">${earned} von ${BADGES.length} Abzeichen verdient.</p><div class="badges">${BADGES.map((b) => {
       const got = p.badges?.[b.id];
@@ -842,6 +972,7 @@ function renderProgress(p) {
     $('#sess-all')?.addEventListener('click', () => { showAllSessions = !showAllSessions; renderProgress(p); });
   }
   if (progTab === 'werte') { bindMeasurements(p); bindTips(view); }
+  if (progTab === 'rekorde') $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex)));
 }
 
 function measurementsHTML(p) {

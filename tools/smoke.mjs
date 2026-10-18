@@ -239,6 +239,41 @@ try {
   await nav('#/profil');
   await click('[data-fs="normal"]'); await sleep(200);
 
+  // 5d) v0.6.0: Befinden, Schnell trainieren, Verlauf/Bestwerte
+  await nav('#/heute');
+  await shot('30-befinden-frage', false);
+  await click('[data-group="energy"] [data-v="1"]'); await click('[data-group="pain"] [data-v="knie"]');
+  await click('#ci-save'); await sleep(300);
+  log('Befinden:', await ev(`document.querySelector('.checkin-mini b')?.textContent`), '· Hinweise:', await ev(`[...document.querySelectorAll('.adapt-note')].map((n) => n.textContent).join(' | ')`));
+  await shot('31-heute-angepasst');
+  await nav('#/uebungen');
+  await click('[data-qmin="5"]'); await sleep(150); await click('[data-qfocus="beine"]'); await sleep(150);
+  const q1 = await ev(`document.querySelector('.quick .ex-line').textContent`);
+  await click('#q-mix'); await sleep(150);
+  log('Schnell trainieren:', q1, '→ gemischt:', await ev(`document.querySelector('.quick .ex-line').textContent`), '·', await ev(`document.querySelector('#q-go').textContent`));
+  await shot('32-schnell-trainieren', false);
+  await click('#q-go'); await sleep(200); await click('[data-act="start"]'); await sleep(300);
+  await skipToEnd(); await click('[data-fb="passt"]'); await sleep(400);
+  log('Wunsch-Einheit:', JSON.stringify((await prof0()).sessions.at(-1)?.title), '· Verlauf-Einträge:', Object.keys((await prof0()).exLog || {}).length);
+  // Übung zweimal: beim zweiten Mal eine Wiederholung mehr → Bestwert
+  for (const plus of [0, 2]) {
+    await nav('#/uebungen');
+    await click('[data-ex="kniehebensitzend"]'); await sleep(300); await click('#try'); await sleep(200);
+    await click('[data-act="start"]'); await sleep(300);
+    for (let k = 0; k < plus; k++) await click('[data-act="rep+"]');
+    if (plus) { log('Player-Verlauf:', await ev(`document.querySelector('.player .hist')?.textContent`), '· Zähler:', await ev(`document.querySelector('.rep-adjust .count').textContent`)); await shot('33-player-verlauf', false); }
+    await click('[data-act="next"]'); await sleep(200); await click('[data-fb="passt"]'); await sleep(300);
+  }
+  await sleep(3300);
+  log('Bestwert-Toast:', await ev(`document.querySelector('#toast').textContent`));
+  await nav('#/fortschritt'); await click('[data-ptab="rekorde"]'); await sleep(250);
+  log('Bestwerte-Liste:', await ev(`document.querySelectorAll('.ex-item .best').length`));
+  log('Seitenbreite ok:', await ev(`document.documentElement.scrollWidth <= innerWidth`));
+  await shot('34-bestwerte');
+  await click('[data-ex="kniehebensitzend"]'); await sleep(400);
+  await shot('35-uebung-verlauf', false);
+  await ev(`document.querySelector('#overlay [data-close]').click()`);
+
   // 6) Dunkelmodus
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
   await nav('#/fortschritt');

@@ -524,3 +524,26 @@ summary { cursor: pointer; font-weight: 650; }
 @container (max-width: 15rem) { .session-fig { display: none; } }
 .session.compact { flex-wrap: wrap; }
 .session.compact .grow { min-width: 8rem; }
+
+/* ---------- v0.6.0: Schnell trainieren, Befinden, Bestwerte ---------- */
+.chips-select button { display: inline-flex; align-items: center; gap: 6px; }
+.chips-select button svg.ico { width: 18px; height: 18px; vertical-align: 0; }
+.quick .seg-ctl { margin: var(--s2) 0 var(--s3); }
+.quick .ex-line { margin-top: var(--s3); }
+.adapt-note { display: inline-flex; align-items: center; gap: 5px; font-size: .82rem; font-weight: 600; color: var(--primary); margin: 2px 0; }
+.adapt-note svg.ico { width: 15px; height: 15px; vertical-align: 0; }
+.checkin .field { margin-top: var(--s3); }
+.checkin .field > span { font-size: .85rem; color: var(--muted); }
+.checkin .chips-select button { min-height: 40px; padding: 0 var(--s3); }
+button.checkin-mini { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.ex-item .best { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.ex-item .best b { font-family: var(--font-num); font-size: 1.25rem; font-weight: 800; }
+.rep-adjust { display: flex; align-items: center; gap: var(--s4); }
+.rep-adjust .icon-btn { width: 52px; height: 52px; }
+.rep-adjust .count { min-width: 3ch; }
+.player .hist { color: var(--muted); margin: 0; }
+.player .hist b { color: var(--text); }
+/* Segment-Reiter dürfen die Seite nie verbreitern (4 Reiter, große Schrift) */
+.seg-ctl { overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+.seg-ctl::-webkit-scrollbar { display: none; }
+.seg-ctl button { flex: 1 0 auto; white-space: nowrap; padding: 0 10px; }

@@ -21,6 +21,8 @@ export function migrate(p) {
   p.why ??= '';
   p.program ??= null;
   p.swaps ||= {};
+  p.checkins ||= {};
+  p.exLog ||= {};
   p.lastExtra ??= null;
   return normalizeRecords(p);
 }

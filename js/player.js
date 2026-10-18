@@ -35,9 +35,11 @@ function say(text, enabled) {
  * @param {object} challenge  aus challenges.js
  * @param {{speech:boolean, sound:boolean, rest?:'kurz'|'normal'|'lang'}} settings
  * @param {(result:{feedback:string, durationSec:number, partial?:boolean, doneSteps?:number}|null)=>void} onDone  null = abgebrochen
- * @param {{allowPartial?:boolean}} [opts]  allowPartial: beim Abbrechen darf der geschaffte Teil gespeichert werden
+ * @param {{allowPartial?:boolean, history?:(id:string)=>({last:number,best:number}|null)}} [opts]
+ *   allowPartial: beim Abbrechen darf der geschaffte Teil gespeichert werden; history: Verlauf je Übung für „Letztes Mal / Bestwert“
+ * Ergebnis enthält `done`: tatsächlich geschaffte Sätze [{ id, amount }] (Wdh. per −/+ angepasst, übersprungene fehlen).
  */
-export function runPlayer(challenge, settings, onDone, { allowPartial = false } = {}) {
+export function runPlayer(challenge, settings, onDone, { allowPartial = false, history = null } = {}) {
   const root = document.createElement('div');
   root.className = 'player';
   root.setAttribute('role', 'dialog');
@@ -61,6 +63,10 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
   let side = 1; // für perSide-Zeitübungen
   let timer = null;
   let quitting = false; // Abbrechen-Abfrage offen
+  let actual = 0; // tatsächliche Wiederholungen der aktuellen Übung (per −/+ anpassbar)
+  const done = {}; // Schritt-Index → geschaffte Menge
+  const doneList = () => Object.entries(done).map(([i, amount]) => ({ id: steps[i].id, amount }));
+  const short = (ex, n) => (ex.unit === 'wdh' ? `${n}×` : `${n} s`);
   let pausedBeforeQuit = false;
 
   const sound = (f, ms) => settings.sound && beep(f, ms);
@@ -137,7 +143,10 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
       body = `${hasFigure(ex.id) ? '<div class="fig-stage" id="fig"></div>' : `<div class="ex-icon">${ex.icon}</div>`}
         <h1>${esc(ex.name)}</h1>
         <p class="muted">${CATEGORIES[ex.cat].label}${ex.perSide && timed ? ` · ${side === 1 ? 'erste' : 'zweite'} Seite` : ''}</p>
-        ${timed ? ring(step.amount) : `<div class="count">${step.amount}×</div><p>${ex.perSide ? 'je Seite · ' : ''}in deinem Tempo</p>`}
+        ${timed ? ring(step.amount) : `<div class="rep-adjust"><button class="icon-btn" data-act="rep-" aria-label="Eine Wiederholung weniger">${ICON.minus}</button>
+          <div class="count" aria-live="polite">${actual}×</div><button class="icon-btn" data-act="rep+" aria-label="Eine Wiederholung mehr">${ICON.plus}</button></div>
+          <p class="small muted">${ex.perSide ? 'je Seite · ' : ''}in deinem Tempo – mehr oder weniger geschafft? Einfach anpassen.</p>`}
+        ${(() => { const h = history?.(ex.id); return h ? `<p class="small hist">Letztes Mal <b>${short(ex, h.last)}</b> · Bestwert <b>${short(ex, h.best)}</b></p>` : ''; })()}
         <details><summary>So geht's</summary><ol class="steps">${ex.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
           <p class="small"><b>Tipp:</b> ${esc(ex.tip)}</p></details>
         <p class="small muted"><b>Zu schwer?</b> ${esc(ex.easier)}</p>`;
@@ -192,15 +201,16 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
     paused = false;
     const step = steps[idx];
     const ex = byId[step.id];
+    actual = step.amount;
     render();
     say(`${ex.name}. ${fmtAmount(ex, step.amount).replace('Sek', 'Sekunden').replace('×', ' mal')}`, settings.speech);
     if (ex.unit === 'sek') startTimer(step.amount);
   }
 
-  function next() {
+  function next(skipped = false) {
     const step = steps[idx];
     const ex = step && byId[step.id];
-    if (phase === 'work' && ex.unit === 'sek' && ex.perSide && side === 1) {
+    if (phase === 'work' && ex.unit === 'sek' && ex.perSide && side === 1 && !skipped) {
       side = 2;
       render();
       say('Seite wechseln', settings.speech);
@@ -208,6 +218,10 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
       return;
     }
     clearInterval(timer);
+    if (phase === 'work') {
+      if (skipped) delete done[idx];
+      else done[idx] = ex.unit === 'sek' ? step.amount : actual;
+    }
     if (phase === 'work' && idx < steps.length - 1 && !restSec) {
       // Intervall-Modus (Programme): direkt weiter ohne Pause
       idx++;
@@ -238,13 +252,17 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
     if (fb) {
       const durationSec = Math.round((Date.now() - startedAt) / 1000);
       cleanup();
-      onDone({ feedback: fb, durationSec });
+      onDone({ feedback: fb, durationSec, done: doneList() });
       return;
     }
     if (act === 'start') enterWork();
-    else if (act === 'next' || act === 'skip') {
-      if (act === 'skip' && phase === 'work') side = 2;
-      next();
+    else if (act === 'next') next();
+    else if (act === 'skip') next(phase === 'work');
+    else if (act === 'rep-' || act === 'rep+') {
+      actual = Math.max(0, Math.min(999, actual + (act === 'rep+' ? 1 : -1)));
+      const cnt = root.querySelector('.rep-adjust .count');
+      if (cnt) cnt.textContent = `${actual}×`;
+      haptic(5);
     } else if (act === 'back') {
       // In der Pause: gerade beendete Übung wiederholen; sonst eine zurück (bei der ersten: neu starten)
       clearInterval(timer);
@@ -277,7 +295,7 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false } 
       const doneSteps = finishedSteps();
       const durationSec = Math.round((Date.now() - startedAt) / 1000);
       cleanup();
-      onDone({ feedback: 'passt', durationSec, partial: true, doneSteps });
+      onDone({ feedback: 'passt', durationSec, partial: true, doneSteps, done: doneList() });
     }
   });
 

@@ -1,5 +1,5 @@
 // Service Worker: Network-First für App-Dateien (immer aktuell), Cache als Offline-Fallback.
-const CACHE = 'aufwind-v6';
+const CACHE = 'aufwind-v7';
 const ASSETS = [
   './', './index.html', './css/app.css', './manifest.webmanifest', './icons/icon.svg',
   './js/app.js', './js/store.js', './js/player.js', './js/ui.js', './js/chart.js',
@@ -8,7 +8,7 @@ const ASSETS = [
   './js/core/week.js', './js/figure.js', './js/dashboard.js', './js/reminders.js',
   './icons/icon-192.png', './icons/icon-512.png', './js/confetti.js',
   './fonts/nunito-latin.woff2', './fonts/nunito-latin-ext.woff2',
-  './js/sync.js', './js/core/syncdata.js', './vendor/qrcode.js', './js/core/records.js', './js/icons.js',
+  './js/sync.js', './js/core/syncdata.js', './vendor/qrcode.js', './js/core/records.js', './js/icons.js', './js/core/checkin.js', './js/core/custom.js', './js/core/exlog.js', './js/data/focus.js',
 ];
 
 self.addEventListener('install', (e) => {
