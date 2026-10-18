@@ -218,6 +218,11 @@ try {
   await shot('15-dashboard-dunkel');
   await nav('#/heute');
   await shot('16-heute-dunkel');
+  // Update-Leiste (gleiches Markup wie showUpdateBar in app.js)
+  await ev(`(() => { const b = document.createElement('div'); b.className = 'update-bar'; b.innerHTML = '<span>✨ Neue Version von Aufwind ist da.</span><button type="button" class="btn light sm">Neu laden</button>'; document.body.appendChild(b); })()`);
+  await sleep(500);
+  log('Update-Leiste im Bild:', await ev(`(() => { const r = document.querySelector('.update-bar').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()`));
+  await shot('17-update-leiste', false);
 
   console.log(errors.length ? 'FEHLER:\n' + errors.join('\n') : 'Keine JS-Fehler.');
 } catch (e) {

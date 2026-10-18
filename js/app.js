@@ -17,7 +17,7 @@ import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported } from './reminders.js';
 
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung' };
 const view = $('#view');
 const tabbar = $('#tabbar');
