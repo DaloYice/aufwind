@@ -274,6 +274,26 @@ try {
   await shot('35-uebung-verlauf', false);
   await ev(`document.querySelector('#overlay [data-close]').click()`);
 
+  // 5e) v0.7.0: Schwierigkeit, Trainingswelten, Beckenboden-Takt
+  await nav('#/uebungen');
+  await click('[data-diff="fortgeschritten"]'); await sleep(200);
+  log('Fortgeschritten:', await ev(`document.querySelector('.quick .ex-line').textContent`), '· Hinweis:', await exists('.quick .warn'));
+  await click('[data-diff=""]'); await sleep(200);
+  log('Welten:', await ev(`[...document.querySelectorAll('.world-card b')].map((b) => b.textContent).join(', ')`));
+  await shot('36-uebungen-welten');
+  await click('a[href="#/welt/beckenboden"]'); await sleep(500);
+  log('Welt Beckenboden:', await ev(`document.querySelector('h1').textContent`), '· Übungen:', await ev(`document.querySelectorAll('.world-ex li').length`), '· Seitenbreite ok:', await ev(`document.documentElement.scrollWidth <= innerWidth`), '· Tab aktiv:', await ev(`document.querySelector('.tabbar a.active').dataset.tab`));
+  await shot('37-welt-beckenboden');
+  await click('#q-go'); await sleep(200); await click('[data-act="start"]'); await sleep(900);
+  const cue1 = await ev(`document.querySelector('.player .cue')?.textContent`);
+  await sleep(4400);
+  log('Takt:', cue1, '→', await ev(`document.querySelector('.player .cue')?.textContent`));
+  await shot('38-beckenboden-takt', false);
+  await click('[data-act="quit"]'); await sleep(200); await click('[data-act="discard"]'); await sleep(300);
+  await nav('#/welt/kraft');
+  log('Welt Kraft:', await ev(`document.querySelector('h1').textContent`), '· Seitenbreite ok:', await ev(`document.documentElement.scrollWidth <= innerWidth`));
+  await shot('39-welt-kraft');
+
   // 6) Dunkelmodus
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
   await nav('#/fortschritt');
@@ -281,6 +301,8 @@ try {
   await shot('15-dashboard-dunkel');
   await nav('#/heute');
   await shot('16-heute-dunkel');
+  await nav('#/welt/beckenboden');
+  await shot('40-welt-dunkel');
   // Update-Leiste (gleiches Markup wie showUpdateBar in app.js)
   await ev(`(() => { const b = document.createElement('div'); b.className = 'update-bar'; b.innerHTML = '<span>✨ Neue Version von Aufwind ist da.</span><button type="button" class="btn light sm">Neu laden</button>'; document.body.appendChild(b); })()`);
   await sleep(500);

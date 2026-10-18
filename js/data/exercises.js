@@ -8,6 +8,7 @@ export const CATEGORIES = {
   ausdauer: { label: 'Ausdauer', icon: '❤️' },
   balance: { label: 'Gleichgewicht', icon: '⚖️' },
   entspannung: { label: 'Entspannung', icon: '🌙' },
+  beckenboden: { label: 'Beckenboden', icon: '🌸' },
 };
 
 export const POSITIONS = { sitzend: 'im Sitzen', stehend: 'im Stehen', boden: 'auf dem Boden' };
@@ -259,6 +260,100 @@ export const EXERCISES = [
     steps: ['Ruhig hinsetzen und tief durchatmen.', 'An drei Dinge denken, die heute gut waren – auch kleine.', 'Dir selbst für die Bewegung heute danken.'],
     tip: 'Positive Gefühle helfen dem Gehirn, die neue Gewohnheit zu verankern.',
     easier: 'Eine Sache reicht.', harder: 'Die drei Dinge aufschreiben.',
+  },
+  // ---------- Kraft für Fortgeschrittene (ab v0.7.0, ohne Sprünge) ----------
+  {
+    id: 'bodenliegestuetz', name: 'Liegestütz am Boden', icon: '💪', cat: 'kraft', pos: 'boden',
+    unit: 'wdh', base: [null, null, null, 5, 10],
+    steps: ['Hände etwas breiter als schulterbreit, Körper bildet eine gerade Linie.', 'Brust langsam Richtung Boden senken, Ellbogen schräg nach hinten.', 'Kraftvoll wieder hochdrücken, Bauch bleibt fest.'],
+    tip: 'Lieber weniger saubere Wiederholungen als viele mit durchhängendem Rücken.',
+    easier: 'Auf den Knien oder am Tisch.', harder: 'Unten 2 Sekunden halten.',
+  },
+  {
+    id: 'bodenplank', name: 'Unterarmstütz am Boden', icon: '🪵', cat: 'kraft', pos: 'boden',
+    unit: 'sek', base: [null, null, null, 20, 40],
+    steps: ['Unterarme unter den Schultern, Beine gestreckt, auf den Zehen.', 'Körper bildet eine Linie von Kopf bis Ferse.', 'Bauch und Po anspannen, ruhig weiteratmen.'],
+    tip: 'Blick zum Boden, der Nacken bleibt lang.',
+    easier: 'Knie am Boden lassen.', harder: 'Abwechselnd ein Bein kurz anheben.',
+  },
+  {
+    id: 'seitstuetz', name: 'Seitstütz', icon: '📐', cat: 'kraft', pos: 'boden', perSide: true,
+    unit: 'sek', base: [null, null, null, 15, 25],
+    steps: ['Auf die Seite legen, Ellbogen unter der Schulter.', 'Becken anheben, bis der Körper eine Linie bildet.', 'Halten, ruhig atmen – dann Seite wechseln.'],
+    tip: 'Das Becken nicht nach hinten kippen lassen.',
+    easier: 'Untere Knie am Boden lassen.', harder: 'Oberen Arm zur Decke strecken.',
+  },
+  {
+    id: 'wandsitzen', name: 'Wandsitzen', icon: '🧱', cat: 'kraft', pos: 'stehend',
+    unit: 'sek', base: [null, null, 15, 25, 40],
+    steps: ['Mit dem Rücken an eine Wand lehnen, Füße einen Schritt vor.', 'An der Wand herunterrutschen, bis die Knie etwa rechtwinklig sind.', 'Halten, dann langsam wieder hochschieben.'],
+    tip: 'Knie bleiben über den Fersen, nicht vor den Zehen.',
+    easier: 'Nur halb so tief gehen.', harder: 'Länger halten oder Fersen leicht anheben.',
+  },
+  {
+    id: 'ausfallvorwaerts', name: 'Ausfallschritt vorwärts', icon: '🦵', cat: 'kraft', pos: 'stehend', perSide: true,
+    unit: 'wdh', base: [null, null, null, 6, 10],
+    steps: ['Aufrecht stehen, Hände an die Hüfte.', 'Großen Schritt nach vorne, hinteres Knie Richtung Boden senken.', 'Mit dem vorderen Bein kraftvoll zurück in den Stand drücken.'],
+    tip: 'Oberkörper bleibt aufrecht, vorderes Knie über dem Fuß.',
+    easier: 'Ausfallschritt rückwärts oder mit Stuhl zum Festhalten.', harder: 'Unten kurz halten.',
+  },
+  {
+    id: 'superman', name: 'Superman', icon: '🦸', cat: 'kraft', pos: 'boden',
+    unit: 'wdh', base: [null, null, null, 8, 12],
+    steps: ['Auf den Bauch legen, Arme nach vorne gestreckt.', 'Arme, Brust und Beine gleichzeitig leicht anheben.', '2 Sekunden halten, langsam ablegen.'],
+    tip: 'Blick zum Boden – nicht den Kopf in den Nacken legen.',
+    easier: 'Nur Arme oder nur Beine anheben.', harder: 'Oben 5 Sekunden halten.',
+  },
+  {
+    id: 'kniebeugehalten', name: 'Kniebeuge halten', icon: '⏳', cat: 'kraft', pos: 'stehend',
+    unit: 'sek', base: [null, null, null, 20, 30],
+    steps: ['Füße hüftbreit, Arme nach vorne.', 'In die Kniebeuge gehen, so tief es angenehm ist.', 'Unten halten und ruhig weiteratmen.'],
+    tip: 'Gewicht auf den Fersen, Brust bleibt offen.',
+    easier: 'Weniger tief oder an der Wand (Wandsitzen).', harder: 'Am Ende 5 kleine Wipper nach oben und unten.',
+  },
+
+  // ---------- Beckenboden (Frauen und Männer) ----------
+  {
+    id: 'bb_wahrnehmen', name: 'Beckenboden spüren', icon: '🌸', cat: 'beckenboden', pos: 'sitzend',
+    unit: 'sek', base: [60, 60, 60, 60, 60], cue: [['Anspannen', 4], ['Lösen', 6]],
+    steps: ['Aufrecht auf die Stuhlkante setzen, Füße hüftbreit.', 'Stell dir vor, du hältst Wind und Wasser zurück – Harnröhre, Scheide bzw. Hoden und After ziehen sanft nach innen-oben.', 'Wieder ganz lösen. Po, Bauch und Beine bleiben dabei locker.'],
+    tip: 'Ein festes Polster oder ein eingerolltes Handtuch unter dem Damm hilft beim Spüren.',
+    easier: 'Nur auf das Lösen achten – das ist genauso wichtig.', harder: 'Mit geschlossenen Augen und ganz ohne Mitspannen von Po und Bauch.',
+  },
+  {
+    id: 'bb_atmung', name: 'Beckenboden-Atmung', icon: '🌬️', cat: 'beckenboden', pos: 'sitzend',
+    unit: 'sek', base: [60, 60, 90, 90, 120], cue: [['Einatmen – lösen', 4], ['Ausatmen – anspannen', 6]],
+    steps: ['Aufrecht sitzen, eine Hand auf den Bauch.', 'Beim Einatmen weitet sich der Bauch, der Beckenboden lässt los.', 'Beim Ausatmen den Beckenboden sanft nach innen-oben ziehen.'],
+    tip: 'Nie die Luft anhalten – der Atem trägt die Übung.',
+    easier: 'Nur atmen und das Weiten beim Einatmen spüren.', harder: 'Beim Ausatmen zusätzlich den unteren Bauch leicht nach innen ziehen.',
+  },
+  {
+    id: 'bb_schnell', name: 'Schnelle Impulse', icon: '⚡', cat: 'beckenboden', pos: 'sitzend',
+    unit: 'sek', base: [30, 30, 40, 45, 60], cue: [['Kurz anspannen', 1], ['Locker', 2]],
+    steps: ['Aufrecht sitzen.', 'Den Beckenboden kurz und kräftig anspannen …', '… und sofort wieder ganz locker lassen.'],
+    tip: 'Diese schnelle Reaktion schützt beim Husten, Niesen und Lachen.',
+    easier: 'Langsamer: 2 Sekunden Pause zwischen den Impulsen.', harder: 'Im Stehen üben.',
+  },
+  {
+    id: 'bb_halten', name: 'Anspannen und halten', icon: '⏳', cat: 'beckenboden', pos: 'sitzend',
+    unit: 'sek', base: [60, 60, 90, 90, 120], cue: [['Anspannen und halten', 5], ['Lösen', 5]],
+    steps: ['Aufrecht sitzen, ruhig atmen.', 'Den Beckenboden anspannen und die Spannung halten – dabei weiteratmen.', 'Genauso lange wieder ganz lösen.'],
+    tip: 'Lieber sanft und sauber halten als fest und mit angehaltenem Atem.',
+    easier: 'Nur 3 Sekunden halten.', harder: 'Im Stehen oder 8–10 Sekunden halten.',
+  },
+  {
+    id: 'bb_stehen', name: 'Beckenboden im Stehen', icon: '🧍', cat: 'beckenboden', pos: 'stehend',
+    unit: 'sek', base: [null, 60, 60, 90, 90], cue: [['Anspannen', 5], ['Lösen', 5]],
+    steps: ['Hüftbreit stehen, Knie locker, Hände an die Hüfte.', 'Beckenboden anspannen, ohne den Po zusammenzukneifen.', 'Lösen und kurz nachspüren.'],
+    tip: 'Im Alltag üben: z. B. beim Zähneputzen oder an der Kasse.',
+    easier: 'Im Sitzen üben.', harder: 'Auf einem Bein stehen und dabei anspannen.',
+  },
+  {
+    id: 'bb_ruecken', name: 'Beckenboden in Rückenlage', icon: '🛏️', cat: 'beckenboden', pos: 'boden',
+    unit: 'sek', base: [null, null, 60, 90, 90], cue: [['Ausatmen – anspannen, Becken leicht heben', 5], ['Einatmen – ablegen und lösen', 5]],
+    steps: ['Auf den Rücken legen, Beine aufgestellt, Arme neben dem Körper.', 'Ausatmen, Beckenboden anspannen und das Becken ein kleines Stück anheben.', 'Einatmen, Becken ablegen und den Beckenboden ganz lösen.'],
+    tip: 'Diese Lage entlastet den Beckenboden – gut zum Üben, wenn er noch schwach ist.',
+    easier: 'Becken liegen lassen, nur anspannen und lösen.', harder: 'Oben 3 Atemzüge halten.',
   },
 ];
 

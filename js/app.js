@@ -10,6 +10,7 @@ import { customWorkout } from './core/custom.js';
 import { recordExercises, exStats } from './core/exlog.js';
 import { checkinOf } from './core/checkin.js';
 import { FOCUS, QUICK_MINUTES, PAIN_LABELS } from './data/focus.js';
+import { WORLDS, DIFFICULTY } from './data/worlds.js';
 import { addSession, updateSession, removeSession, restoreSession } from './core/records.js';
 import { streak, adjustIntensity, levelSuggestion, awardBadges, BADGES } from './core/progress.js';
 import { weekStart, weekStats, weekGoal, reviewDue, suggestGoal, reviewMessage, familyProgress, defaultFamilyGoal } from './core/week.js';
@@ -22,7 +23,7 @@ import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported } from './reminders.js';
 
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung', custom: 'Training nach Wunsch' };
 const view = $('#view');
 const tabbar = $('#tabbar');
@@ -63,7 +64,8 @@ function showProfiles(p) {
 }
 
 // ---------- Router ----------
-const routes = { heute: renderToday, uebungen: renderLibrary, fortschritt: renderProgress, profil: renderProfile, neu: renderOnboarding };
+const routes = { heute: renderToday, uebungen: renderLibrary, welt: renderWorld, fortschritt: renderProgress, profil: renderProfile, neu: renderOnboarding };
+const TAB_OF = { welt: 'uebungen' };
 
 function route() {
   const [name = 'heute', arg] = location.hash.replace(/^#\/?/, '').split('/');
@@ -76,15 +78,17 @@ function route() {
   if (!p && name !== 'neu') { location.hash = '#/neu'; return; }
   closeSheet();
   tabbar.hidden = name === 'neu';
-  $$('a', tabbar).forEach((a) => a.classList.toggle('active', a.dataset.tab === name));
+  $$('a', tabbar).forEach((a) => a.classList.toggle('active', a.dataset.tab === (TAB_OF[name] || name)));
   currentRoute = name;
+  currentArg = arg;
   view.classList.add('enter');
   clearTimeout(enterTimer);
   enterTimer = setTimeout(() => view.classList.remove('enter'), 700);
-  (routes[name] || renderToday)(p);
+  (routes[name] || renderToday)(p, arg);
   window.scrollTo(0, 0);
 }
 let currentRoute = '';
+let currentArg;
 let enterTimer;
 
 /** Nach einem Abgleich neu zeichnen – aber nie mitten in einer Eingabe, einem Dialog oder Workout. */
@@ -96,7 +100,7 @@ function onRemoteChange() {
   const y = scrollY;
   const p = store.activeProfile();
   if (!p) { location.hash = '#/neu'; return; }
-  (routes[currentRoute] || renderToday)(p);
+  (routes[currentRoute] || renderToday)(p, currentArg);
   scrollTo(0, y);
 }
 document.addEventListener('focusout', () => setTimeout(() => { if (redrawPending && $('#overlay').hidden) { redrawPending = false; onRemoteChange(); } }, 300));
@@ -650,6 +654,7 @@ function startCustom(p, c) {
     addSession(p, { date: toKey(), slot: 'custom', ...(res.partial ? { partial: true } : {}), feedback: res.feedback, durationSec: res.durationSec, title: c.title, cats: catSeconds(c, res.durationSec) });
     finishUpdate(p);
     if (currentRoute === 'uebungen') renderLibrary(p);
+    if (currentRoute === 'welt') renderWorld(p, currentArg);
     if (res.partial) toast('Gespeichert – jede Minute zählt 💚');
     else feedbackToast(res.feedback);
   }, playerOpts(p, { allowPartial: true }));
@@ -747,24 +752,93 @@ function showReview(p, start) {
 // ---------- Übungen & Programme ----------
 let libFilter = { cat: '', mine: true };
 let quick = { minutes: 10, focus: 'ganzkoerper', mix: 0 };
+let difficulty = null; // null = eigenes Level, sonst Schlüssel aus DIFFICULTY
 
-function quickHTML(p, c) {
+/** Profil mit dem gewählten Schwierigkeits-Level (für Wunsch-Training und Übungsliste). */
+const atDifficulty = (p) => (difficulty ? { ...p, level: DIFFICULTY[difficulty].level } : p);
+
+function difficultyHTML(p) {
+  const lvl = atDifficulty(p).level;
+  const opts = [[null, `Mein Level (${p.level})`], ...Object.entries(DIFFICULTY).map(([k, d]) => [k, d.label])];
+  return `<div class="field diff"><span>Schwierigkeit</span><div class="chips-select" role="radiogroup" aria-label="Schwierigkeit">${opts.map(([k, l]) =>
+    `<button type="button" role="radio" aria-checked="${k === difficulty}" class="${k === difficulty ? 'selected' : ''}" data-diff="${k ?? ''}">${l}</button>`).join('')}</div>
+    ${lvl > p.level ? `<p class="warn small" style="margin:8px 0 0">${ICON.info} Das ist über deinem Level ${p.level}${p.assessment?.doctorHint ? ' – bitte vorher ärztlich abklären, ob das für dich passt' : ''}. Hör auf deinen Körper und mach Übungen leichter oder lass sie aus, wenn etwas zu viel ist.</p>` : ''}</div>`;
+}
+
+function bindDifficulty(rerender) {
+  $$('[data-diff]').forEach((b) => b.addEventListener('click', () => {
+    difficulty = b.dataset.diff || null;
+    rerender();
+    $(`[data-diff="${difficulty ?? ''}"]`)?.focus();
+  }));
+}
+
+/** Auswahl Dauer + Mischen + Start für einen Schwerpunkt (Schnell trainieren und Welten). */
+function workoutPicker(p, wish, c, { title = 'Schnell trainieren', sub = 'Wie viel Zeit hast du – und worauf hast du Lust?', focusChips = true } = {}) {
   const ids = [...new Set(c.steps.map((x) => x.id))];
   const ci = checkinOf(p, toKey());
   return `<section class="card quick">
-    <div class="card-head">${icoTile('flag', 'green')}<div class="grow"><h2 style="margin:0">Schnell trainieren</h2><span class="small muted">Wie viel Zeit hast du – und worauf hast du Lust?</span></div></div>
-    <div class="seg-ctl" role="radiogroup" aria-label="Dauer">${QUICK_MINUTES.map((m) => `<button role="radio" aria-checked="${m === quick.minutes}" class="${m === quick.minutes ? 'on' : ''}" data-qmin="${m}">${m} Min</button>`).join('')}</div>
-    <div class="chips-select" role="radiogroup" aria-label="Schwerpunkt">${Object.entries(FOCUS).map(([k, f]) => `<button type="button" role="radio" aria-checked="${k === quick.focus}" class="${k === quick.focus ? 'selected' : ''}" data-qfocus="${k}">${ICON[f.icon]}${f.label}</button>`).join('')}</div>
+    <div class="card-head">${icoTile('flag', 'green')}<div class="grow"><h2 style="margin:0">${title}</h2><span class="small muted">${sub}</span></div></div>
+    <div class="seg-ctl" role="radiogroup" aria-label="Dauer">${QUICK_MINUTES.map((m) => `<button role="radio" aria-checked="${m === wish.minutes}" class="${m === wish.minutes ? 'on' : ''}" data-qmin="${m}">${m} Min</button>`).join('')}</div>
+    ${focusChips ? `<div class="chips-select" role="radiogroup" aria-label="Schwerpunkt">${Object.entries(FOCUS).map(([k, f]) => `<button type="button" role="radio" aria-checked="${k === wish.focus}" class="${k === wish.focus ? 'selected' : ''}" data-qfocus="${k}">${ICON[f.icon]}${f.label}</button>`).join('')}</div>` : ''}
+    ${difficultyHTML(p)}
     <p class="ex-line">${ids.map((id) => esc(byId[id].name)).join(' · ')}</p>
     ${ci?.pain?.length || ci?.energy === 1 ? `<div class="adapt-note">${ICON.heart}Angepasst an dein Befinden</div>` : ''}
     <div class="session-foot"><button type="button" class="link-btn" id="q-mix">${ICON.swap}Neu mischen</button><button class="btn" id="q-go">Starten · ${c.minutes} Min</button></div>
   </section>`;
 }
 
+function bindPicker(p, wish, c, rerender) {
+  $$('[data-qmin]').forEach((b) => b.addEventListener('click', () => { wish.minutes = Number(b.dataset.qmin); rerender(); $(`[data-qmin="${wish.minutes}"]`)?.focus(); }));
+  $$('[data-qfocus]').forEach((b) => b.addEventListener('click', () => { wish.focus = b.dataset.qfocus; rerender(); $(`[data-qfocus="${wish.focus}"]`)?.focus(); }));
+  $('#q-mix').addEventListener('click', () => { wish.mix++; rerender(); $('#q-mix')?.focus(); });
+  $('#q-go').addEventListener('click', () => startCustom(p, c));
+  bindDifficulty(rerender);
+}
+
+// ---------- Trainingswelten ----------
+const worldWish = {};
+
+function worldsHTML() {
+  return `<h2 style="margin:28px 0 12px">Trainingswelten</h2>
+    <div class="ex-list">${Object.entries(WORLDS).map(([id, w]) => `<a class="card row link-card world-card" href="#/welt/${id}">${icoTile(w.icon, w.tone)}
+      <span class="grow"><b>${esc(w.title)}</b><br><span class="small muted">${esc(w.teaser)}</span></span><span class="chev">${ICON.chevron}</span></a>`).join('')}</div>`;
+}
+
+function renderWorld(p, id) {
+  const w = WORLDS[id];
+  if (!w) { location.hash = '#/uebungen'; return; }
+  const wish = (worldWish[id] ||= { minutes: 10, focus: w.focus, mix: 0 });
+  const c = customWorkout(wish, atDifficulty(p), toKey());
+  const lvl = atDifficulty(p).level;
+  const f = FOCUS[w.focus];
+  const exs = (f.ids ? f.ids.map((x) => byId[x]) : EXERCISES.filter((e) => f.cats.includes(e.cat) && !e.programOnly))
+    .sort((a, b) => (a.base.findIndex((v) => v != null) - b.base.findIndex((v) => v != null)));
+  const short = (ex, n) => (ex.unit === 'wdh' ? `${n}×` : `${n} s`);
+  view.innerHTML = `<a class="link-btn back-link" href="#/uebungen">${ICON.back}Übungen</a>
+    <header class="world-head">${icoTile(w.icon, w.tone)}<div><div class="eyebrow">Trainingswelt</div><h1>${esc(w.title)}</h1></div></header>
+    <div class="stack">
+      <section class="card"><p style="margin:0 0 12px">${esc(w.intro)}</p><ul class="points">${w.points.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
+      ${w.safety ? `<div class="warn small"><b>Wichtig:</b> ${esc(w.safety)}</div>` : ''}
+      ${workoutPicker(p, wish, c, { title: `${w.title}: Kurz-Workout`, sub: 'Dauer wählen, mischen, loslegen.', focusChips: false })}
+      <section class="card"><h3>Übungen</h3><ul class="log-list world-ex">${exs.map((e) => {
+        const st = exStats(p, e.id);
+        const from = e.base.findIndex((v) => v != null) + 1;
+        return `<li><button type="button" data-ex="${e.id}"><span class="ex-ico">${e.icon}</span><span class="grow"><b>${esc(e.name)}</b><br>
+          <span class="small muted">${e.base[lvl - 1] != null ? esc(fmtAmount(e, e.base[lvl - 1])) : `ab Level ${from}`}${st ? ` · Bestwert ${short(e, st.best)}` : ''}</span></span><span class="chev">${ICON.chevron}</span></button></li>`;
+      }).join('')}</ul></section>
+      <section class="card"><div class="card-head">${icoTile('bulb', 'orange')}<div class="eyebrow">Tipps</div></div><ul class="points">${w.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
+    </div>`;
+  bindPicker(p, wish, c, () => renderWorld(p, id));
+  $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex)));
+}
+
 function renderLibrary(p) {
-  const list = EXERCISES.filter((e) => !e.programOnly && (!libFilter.cat || e.cat === libFilter.cat) && (!libFilter.mine || e.base[p.level - 1] != null));
-  const qc = customWorkout(quick, p, toKey());
-  view.innerHTML = `${quickHTML(p, qc)}
+  const lvl = atDifficulty(p).level;
+  const list = EXERCISES.filter((e) => !e.programOnly && (!libFilter.cat || e.cat === libFilter.cat) && (!libFilter.mine || e.base[lvl - 1] != null));
+  const qc = customWorkout(quick, atDifficulty(p), toKey());
+  view.innerHTML = `${workoutPicker(p, quick, qc)}
+    ${worldsHTML()}
     <h1 style="margin-top:28px">Programme</h1>
     <p class="small muted">Mehrwochen-Pläne mit 3 Einheiten pro Woche und einem klaren Ziel.</p>
     <div class="ex-list">${PROGRAMS.map((pr) => {
@@ -776,20 +850,17 @@ function renderLibrary(p) {
     }).join('')}</div>
     <h1 style="margin-top:28px">Übungen</h1>
     <div class="filters" role="toolbar" aria-label="Filter">
-      <button data-mine class="${libFilter.mine ? 'on' : ''}" aria-pressed="${libFilter.mine}">Mein Level</button>
+      <button data-mine class="${libFilter.mine ? 'on' : ''}" aria-pressed="${libFilter.mine}">${difficulty ? DIFFICULTY[difficulty].label : 'Mein Level'}</button>
       <button data-cat="" class="${!libFilter.cat ? 'on' : ''}">Alle Bereiche</button>
       ${Object.entries(CATEGORIES).map(([k, c]) => `<button data-cat="${k}" class="${libFilter.cat === k ? 'on' : ''}">${c.icon} ${c.label}</button>`).join('')}
     </div>
-    <p class="small muted">${list.length} Übungen${libFilter.mine ? ` für Level ${p.level}` : ''}</p>
+    <p class="small muted">${list.length} Übungen${libFilter.mine ? ` für Level ${lvl}` : ''}</p>
     <div class="ex-list">${list.map((e) => `<button class="ex-item" data-ex="${e.id}"><span class="ico">${e.icon}</span>
       <span style="flex:1"><b>${esc(e.name)}</b><br><span class="small muted">${CATEGORIES[e.cat].label} · ${POSITIONS[e.pos]}</span></span>
-      <span class="small muted">${e.base[p.level - 1] != null ? esc(fmtAmount(e, e.base[p.level - 1])) : `ab L${e.base.findIndex((v) => v != null) + 1}`}</span></button>`).join('')}</div>`;
+      <span class="small muted">${e.base[lvl - 1] != null ? esc(fmtAmount(e, e.base[lvl - 1])) : `ab L${e.base.findIndex((v) => v != null) + 1}`}</span></button>`).join('')}</div>`;
 
   $('[data-mine]').addEventListener('click', () => { libFilter.mine = !libFilter.mine; renderLibrary(p); });
-  $$('[data-qmin]').forEach((b) => b.addEventListener('click', () => { quick.minutes = Number(b.dataset.qmin); renderLibrary(p); $(`[data-qmin="${quick.minutes}"]`)?.focus(); }));
-  $$('[data-qfocus]').forEach((b) => b.addEventListener('click', () => { quick.focus = b.dataset.qfocus; renderLibrary(p); $(`[data-qfocus="${quick.focus}"]`)?.focus(); }));
-  $('#q-mix').addEventListener('click', () => { quick.mix++; renderLibrary(p); $('#q-mix')?.focus(); });
-  $('#q-go').addEventListener('click', () => startCustom(p, qc));
+  bindPicker(p, quick, qc, () => renderLibrary(p));
   $$('[data-cat]').forEach((b) => b.addEventListener('click', () => { libFilter.cat = b.dataset.cat; renderLibrary(p); }));
   $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex)));
   $$('[data-prog]').forEach((b) => b.addEventListener('click', () => showProgram(p, b.dataset.prog)));
@@ -860,7 +931,7 @@ function showExercise(p, id) {
   if (stage) mountFigure(stage, id, { size: 220 });
   $('#try').addEventListener('click', () => {
     closeSheet();
-    const amount = e.base[p.level - 1] ?? e.base.find((v) => v != null);
+    const amount = e.base[atDifficulty(p).level - 1] ?? e.base[p.level - 1] ?? e.base.find((v) => v != null);
     runPlayer({ title: e.name, icon: e.icon, steps: [{ id, amount, round: 1 }], rest: 0, rounds: 1, minutes: 1 }, store.getState().settings, (res) => {
       if (!res) return;
       recordDone(p, res);

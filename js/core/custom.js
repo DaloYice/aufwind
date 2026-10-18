@@ -33,7 +33,7 @@ export function customWorkout({ minutes, focus, mix = 0 }, profile, dateKey) {
 
   let pool = (f.ids ? f.ids.map((id) => byId[id]) : f.cats.flatMap((c) => forLevel(level, c))).filter(ok);
   if (!pool.length) pool = forLevel(level, 'mobil').filter(ok);
-  const rest = focus === 'dehnen' || focus === 'aufwaermen' ? Math.min(10, REST[level - 1]) : REST[level - 1];
+  const rest = f.rest ?? (focus === 'dehnen' || focus === 'aufwaermen' ? Math.min(10, REST[level - 1]) : REST[level - 1]);
   const budget = minutes * 60;
   const used = new Set();
 
@@ -51,8 +51,11 @@ export function customWorkout({ minutes, focus, mix = 0 }, profile, dateKey) {
 
   // Hauptteil: Pool gemischt durchlaufen, bei Bedarf in weiteren Runden, bis die Zeit gefüllt ist
   let order = shuffle(pool.filter((e) => !used.has(e.id)), rand);
+  // Feste Einstiegsübung (z. B. Beckenboden: erst spüren, dann trainieren)
+  const first = (f.first || []).map((id) => order.find((e) => e.id === id)).filter(Boolean);
+  order = [...first, ...order.filter((e) => !first.includes(e))];
   // Zu wenig Auswahl (z. B. wegen Beschwerden) → um schonende Beweglichkeits- und Gleichgewichtsübungen ergänzen
-  if (order.length < 4) {
+  if (order.length < 4 && !f.noExtend) {
     const extra = ['mobil', 'balance', 'kraft'].flatMap((c) => forLevel(level, c))
       .filter((e) => ok(e) && !used.has(e.id) && !order.includes(e) && e.pos !== 'boden');
     order = [...order, ...shuffle(extra, rand).slice(0, 4 - order.length)];

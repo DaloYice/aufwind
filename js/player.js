@@ -87,7 +87,28 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false, h
   }
   document.addEventListener('visibilitychange', onVis);
 
+  // Takt-Ansage (z. B. Beckenboden: „Anspannen … Lösen“) für Zeitübungen mit `cue: [[Text, Sekunden], …]`
+  let cueIdx = -1;
+  function updateCue() {
+    const ex = phase === 'work' && byId[steps[idx]?.id];
+    if (!ex?.cue) return;
+    const cycle = ex.cue.reduce((t, c) => t + c[1], 0);
+    let e = (total - remaining) % cycle;
+    let i = 0;
+    while (i < ex.cue.length - 1 && e >= ex.cue[i][1]) { e -= ex.cue[i][1]; i++; }
+    if (i === cueIdx) return;
+    const first = cueIdx === -1;
+    cueIdx = i;
+    const el = root.querySelector('.cue');
+    if (el) { el.textContent = ex.cue[i][0]; el.dataset.phase = String(i); }
+    if (first || paused) return; // Start: Übungsname wird gerade angesagt
+    if (ex.cue[i][1] >= 3) say(ex.cue[i][0], settings.speech);
+    else sound(i === 0 ? 880 : 520, 60);
+    haptic(i === 0 ? 12 : 4);
+  }
+
   function startTimer(sec) {
+    cueIdx = -1;
     remaining = total = sec;
     clearInterval(timer);
     let last = performance.now();
@@ -110,6 +131,7 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false, h
     const cnt = root.querySelector('.count');
     if (fg) fg.style.strokeDashoffset = String(565.5 * (1 - remaining / total));
     if (cnt) cnt.textContent = fmtClock(remaining);
+    updateCue();
   }
 
   function ring(sec) {
@@ -127,6 +149,7 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false, h
   }
 
   function render() {
+    cueIdx = -1; // Takt-Text nach dem Neuzeichnen still nachziehen
     const step = steps[idx];
     const ex = step && byId[step.id];
     let body = '';
@@ -143,6 +166,7 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false, h
       body = `${hasFigure(ex.id) ? '<div class="fig-stage" id="fig"></div>' : `<div class="ex-icon">${ex.icon}</div>`}
         <h1>${esc(ex.name)}</h1>
         <p class="muted">${CATEGORIES[ex.cat].label}${ex.perSide && timed ? ` · ${side === 1 ? 'erste' : 'zweite'} Seite` : ''}</p>
+        ${timed && ex.cue ? `<div class="cue" data-phase="0" aria-live="polite">${esc(ex.cue[0][0])}</div>` : ''}
         ${timed ? ring(step.amount) : `<div class="rep-adjust"><button class="icon-btn" data-act="rep-" aria-label="Eine Wiederholung weniger">${ICON.minus}</button>
           <div class="count" aria-live="polite">${actual}×</div><button class="icon-btn" data-act="rep+" aria-label="Eine Wiederholung mehr">${ICON.plus}</button></div>
           <p class="small muted">${ex.perSide ? 'je Seite · ' : ''}in deinem Tempo – mehr oder weniger geschafft? Einfach anpassen.</p>`}

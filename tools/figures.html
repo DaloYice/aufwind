@@ -7,7 +7,8 @@
 import { POSES } from '../js/data/poses.js';
 import { renderStatic } from '../js/figure.js';
 const g = document.getElementById('g');
-for (const [id, def] of Object.entries(POSES)) {
+const only = new URLSearchParams(location.search).get('ids')?.split(',');
+for (const [id, def] of Object.entries(POSES).filter(([id]) => !only || only.includes(id))) {
   const c = document.createElement('div'); c.className = 'c'; c.innerHTML = `<b>${id}</b><div class="row"></div>`;
   def.keys.forEach((_, i) => renderStatic(c.querySelector(".row"), id, i, 150));
   g.appendChild(c);
