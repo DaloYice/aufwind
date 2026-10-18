@@ -294,8 +294,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .option:active { transform: scale(.98); }
 .option.selected { border-color: var(--primary); background: var(--primary-soft); }
 .option.selected::before { border: 7px solid var(--primary); }
-label.field { display: block; }
-label.field > span { display: block; font-weight: 800; margin-bottom: 6px; font-size: .95rem; }
+label.field, div.field { display: block; }
+label.field > span, div.field > span { display: block; font-weight: 800; margin-bottom: 6px; font-size: .95rem; }
 input[type=text], input[type=number], input[type=time], input[type=date], select, textarea {
   width: 100%; min-height: 50px; padding: 0 var(--s4); border-radius: var(--r1);
   border: 2px solid var(--line); background: var(--surface); transition: border-color .2s, box-shadow .2s;
@@ -413,6 +413,9 @@ summary { cursor: pointer; font-weight: 800; }
   opacity: 0; pointer-events: none; transition: .3s var(--ease); z-index: 50; max-width: calc(100% - 32px); box-shadow: var(--shadow-lg); text-align: center;
 }
 .toast.show { opacity: 1; transform: translateX(-50%); }
+.toast.has-action.show { pointer-events: auto; }
+.toast button { background: none; border: 0; color: #8fe0bf; font: inherit; font-weight: 800; padding: 10px 6px 10px 12px; margin: -10px -6px -10px 0; min-height: 44px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+@media (prefers-color-scheme: dark) { .toast button { color: #1a6b4f; } }
 
 /* ---------- Animierte Übungsfigur ---------- */
 .figure { display: block; max-width: 100%; height: auto; }
@@ -485,4 +488,24 @@ summary { cursor: pointer; font-weight: 800; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* ---------- v0.4.0 Alltag ---------- */
+.hero .card-links { display: flex; flex-wrap: wrap; gap: 0 var(--s4); margin: var(--s2) 0 calc(-1 * var(--s2)); position: relative; z-index: 1; }
+.hero .card-links button {
+  background: none; border: 0; color: inherit; font: inherit; font-size: .9rem; font-weight: 700; opacity: .9;
+  min-height: 44px; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px;
+}
+.hero .card-links button:hover { opacity: 1; }
+.sess-list li { padding: 0; }
+.sess-list button {
+  display: flex; justify-content: space-between; align-items: center; gap: var(--s3); width: 100%; min-height: 48px; padding: 10px 0;
+  background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.sess-list button > span:last-child { white-space: nowrap; }
+.update-bar {
+  position: fixed; left: 50%; top: calc(var(--s3) + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 25;
+  display: flex; align-items: center; gap: var(--s3); width: max-content; max-width: calc(100% - 32px);
+  background: var(--primary); color: var(--primary-ink); padding: var(--s2) var(--s2) var(--s2) var(--s4); border-radius: 999px;
+  box-shadow: var(--shadow-lg); font-weight: 700; animation: pop .4s var(--ease) both;
 }

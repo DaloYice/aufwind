@@ -30,6 +30,7 @@ function pick(list, rand, exclude = new Set()) {
 }
 
 const REST = [30, 25, 20, 15, 15];
+const MORNING_EXCLUDE = ['gehen', 'treppe', 'pmr', 'dankbarkeit'];
 const ROUNDS = [1, 1, 2, 2, 3];
 
 // Abend-Themen rotieren, damit nicht jeder Tag gleich ist.
@@ -72,7 +73,7 @@ function summarize(slot, title, icon, steps, rest, rounds) {
 export function morningChallenge(dateKey, profile) {
   const { level, intensity = 1, id = 'p' } = profile;
   const rand = rng(hashString(`${dateKey}|${id}|morning`));
-  const used = new Set(['gehen', 'treppe', 'pmr', 'dankbarkeit']);
+  const used = new Set(MORNING_EXCLUDE);
   // Morgens keine Bodenübungen – schnell und ohne Matte machbar.
   const pool = (cat) => forLevel(level, cat).filter((e) => e.pos !== 'boden');
   const ids = [pick(pool('mobil'), rand, used).id];
@@ -109,5 +110,50 @@ export function tipOfDay(dateKey) {
 }
 
 export function challengeFor(slot, dateKey, profile) {
-  return slot === 'morning' ? morningChallenge(dateKey, profile) : eveningChallenge(dateKey, profile);
+  const c = slot === 'morning' ? morningChallenge(dateKey, profile) : eveningChallenge(dateKey, profile);
+  return applySwaps(c, profile.swaps?.[`${dateKey}|${slot}`], profile);
+}
+
+// ---------- Übung tauschen ----------
+// profile.swaps['YYYY-MM-DD|slot'] = { ursprünglicheId: neueId } – gilt nur für diesen Tag.
+
+function applySwaps(c, map, profile) {
+  if (!map || !Object.keys(map).length) return c;
+  const steps = c.steps.map((s) => {
+    const to = map[s.id];
+    if (!to || !byId[to]) return s;
+    const ex = byId[to];
+    return { ...s, id: to, amount: amountFor(ex, profile.level, ex.cat === 'entspannung' ? 1 : profile.intensity ?? 1) };
+  });
+  return summarize(c.slot, c.title, c.icon, steps, c.rest, c.rounds);
+}
+
+/** Mögliche Ersatzübungen: gleicher Bereich, im Level, nicht schon in der Einheit, morgens ohne Boden. */
+export function swapOptions(slot, dateKey, profile, currentId) {
+  const ex = byId[currentId];
+  const c = challengeFor(slot, dateKey, profile);
+  const inUse = new Set(c.steps.map((s) => s.id));
+  const excluded = slot === 'morning' ? MORNING_EXCLUDE : ['dankbarkeit'];
+  return forLevel(profile.level, ex.cat).filter((e) => !excluded.includes(e.id) && (slot !== 'morning' || e.pos !== 'boden')
+    && (e.id === currentId || !inUse.has(e.id)));
+}
+
+export const canSwap = (slot, dateKey, profile, currentId) => swapOptions(slot, dateKey, profile, currentId).length > 1;
+
+/** Tauscht eine Übung reihum gegen die nächste passende. Gibt die neue ID zurück (oder null). */
+export function swapExercise(profile, slot, dateKey, currentId) {
+  const opts = swapOptions(slot, dateKey, profile, currentId);
+  if (opts.length < 2) return null;
+  const i = opts.findIndex((e) => e.id === currentId);
+  const nextId = opts[(i + 1) % opts.length].id;
+  const key = `${dateKey}|${slot}`;
+  const map = { ...(profile.swaps?.[key] || {}) };
+  const orig = Object.keys(map).find((k) => map[k] === currentId) || currentId;
+  if (nextId === orig) delete map[orig];
+  else map[orig] = nextId;
+  // Alte Tage aufräumen – Tausch gilt nur für den Tag selbst
+  const swaps = Object.fromEntries(Object.entries(profile.swaps || {}).filter(([k]) => k.slice(0, 10) >= dateKey));
+  swaps[key] = map;
+  profile.swaps = swaps;
+  return nextId;
 }

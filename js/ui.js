@@ -5,12 +5,42 @@ export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 let toastTimer;
-export function toast(msg, ms = 2800) {
+let actionShowing = false;
+const waiting = []; // einfache Meldungen, die auf das Ende einer Meldung mit Knopf warten
+
+function endToast() {
+  $('#toast').classList.remove('show');
+  actionShowing = false;
+  const next = waiting.shift();
+  if (next) setTimeout(() => toast(...next), 350);
+}
+
+/** Kurze Meldung; optional mit Knopf (z. B. Rückgängig). Eine Meldung mit Knopf wird nicht von einfachen Meldungen verdrängt. */
+export function toast(msg, ms = 2800, action = null) {
+  if (actionShowing && !action) { waiting.push([msg, ms]); return; }
   const el = $('#toast');
   el.textContent = msg;
+  el.classList.toggle('has-action', !!action);
+  actionShowing = !!action;
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = action.label;
+    b.addEventListener('click', () => {
+      clearTimeout(toastTimer);
+      endToast();
+      action.fn();
+    });
+    el.append(' ', b);
+  }
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+  toastTimer = setTimeout(endToast, action ? Math.max(ms, 6000) : ms);
+}
+
+/** Meldung „Gelöscht“ mit Rückgängig-Knopf. */
+export function undoToast(msg, undo) {
+  toast(msg, 6000, { label: 'Rückgängig', fn: undo });
 }
 
 /** Bottom-Sheet öffnen; gibt das Sheet-Element zurück. */

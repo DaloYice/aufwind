@@ -169,6 +169,48 @@ try {
   await nav('#/profil');
   await shot('14-profil');
 
+  // 5b) v0.4.0 Alltag: Tauschen, Teil-Speichern, „Schon erledigt“, Nachtragen, Bearbeiten/Löschen mit Rückgängig
+  await nav('#/heute');
+  const prof0 = () => ev(`JSON.parse(localStorage.getItem('aufwind:v1')).profiles[0]`);
+  log('IDs nach Migration:', (await prof0()).sessions.every((s) => s.id));
+  await click('[data-swap="evening"]'); await sleep(250);
+  const before = await ev(`[...document.querySelectorAll('[data-sw]')].map((b) => b.dataset.sw).join(',')`);
+  await click('[data-sw]'); await sleep(250);
+  log('Tausch:', before, '→', await ev(`[...document.querySelectorAll('[data-sw]')].map((b) => b.dataset.sw).join(',')`));
+  await shot('20-tauschen', false);
+  await click('#overlay [data-close].btn'); await sleep(300);
+  await click('[data-start="evening"]'); await sleep(200);
+  await click('[data-act="start"]'); await sleep(200);
+  await click(await exists('[data-act="next"]') ? '[data-act="next"]' : '[data-act="skip"]'); await sleep(200);
+  await click('[data-act="quit"]'); await sleep(200);
+  await shot('21-abbrechen-teil', false);
+  await click('[data-act="save-partial"]'); await sleep(400);
+  log('Teil gespeichert:', JSON.stringify((await prof0()).sessions.filter((s) => s.slot === 'evening').at(-1)));
+  await shot('22-heute-teilweise');
+  await click('[data-mark="evening"]'); await sleep(250);
+  await click('[data-fb="passt"]'); await sleep(400);
+  log('Abend nach „Schon erledigt“:', JSON.stringify((await prof0()).sessions.filter((s) => s.slot === 'evening').slice(-2).map((s) => [s.date, s.partial || false, s.manual || false])));
+  await click('#extra'); await sleep(250);
+  await click('[data-day]:nth-child(2)'); await click('[data-min="30"]');
+  await shot('23-nachtragen', false);
+  await click('#x-save'); await sleep(400);
+  log('Nachgetragen:', JSON.stringify((await prof0()).sessions.filter((s) => s.slot === 'extra').at(-1)?.date), '· lastExtra:', JSON.stringify((await prof0()).lastExtra));
+  await nav('#/fortschritt');
+  await click('[data-ptab="overview"]'); await sleep(200);
+  const n0 = (await prof0()).sessions.length;
+  await click('[data-sess]'); await sleep(250);
+  await shot('24-einheit-bearbeiten', false);
+  await click('#e-del'); await sleep(300);
+  const n1 = (await prof0()).sessions.length;
+  await shot('25-rueckgaengig', false);
+  await click('#toast button'); await sleep(300);
+  log('Einheiten:', n0, '→ gelöscht', n1, '→ rückgängig', (await prof0()).sessions.length);
+  await click('[data-ptab="werte"]'); await sleep(200);
+  await click('summary'); await click('[data-del]'); await sleep(300);
+  const w1 = (await prof0()).logs.weight.length;
+  await click('#toast button'); await sleep(300);
+  log('Messwert gelöscht → rückgängig:', w1, '→', (await prof0()).logs.weight.length, '· Liste offen:', await ev(`document.querySelector('#log-all')?.open`));
+
   // 6) Dunkelmodus
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
   await nav('#/fortschritt');

@@ -1,5 +1,6 @@
 // Lokale Datenhaltung (localStorage) mit mehreren Profilen.
 import { toKey } from './core/dates.js';
+import { normalizeRecords, addLogEntry, removeLogEntry, restoreLogEntry } from './core/records.js';
 
 const KEY = 'aufwind:v1';
 const listeners = new Set();
@@ -19,8 +20,9 @@ export function migrate(p) {
   p.plan ||= { morning: '', evening: '' };
   p.why ??= '';
   p.program ??= null;
-  p.removedLogs ||= [];
-  return p;
+  p.swaps ||= {};
+  p.lastExtra ??= null;
+  return normalizeRecords(p);
 }
 
 let state = load();
@@ -104,18 +106,19 @@ export function setLevel(p, level) {
 }
 
 export function addLog(p, kind, value, date = toKey()) {
-  const list = (p.logs[kind] ||= []);
-  const existing = list.find((e) => e.date === date);
-  if (existing) existing.value = value;
-  else list.push({ date, value });
-  p.removedLogs = (p.removedLogs || []).filter((k) => k !== `${kind}:${date}`);
-  list.sort((a, b) => a.date.localeCompare(b.date));
+  addLogEntry(p, kind, value, date);
   save();
 }
 
+/** Löscht einen Messwert und gibt ihn zurück (für Rückgängig). */
 export function removeLog(p, kind, date) {
-  p.logs[kind] = (p.logs[kind] || []).filter((e) => e.date !== date);
-  p.removedLogs = [...new Set([...(p.removedLogs || []), `${kind}:${date}`])];
+  const e = removeLogEntry(p, kind, date);
+  save();
+  return e;
+}
+
+export function restoreLog(p, kind, entry) {
+  restoreLogEntry(p, kind, entry);
   save();
 }
 

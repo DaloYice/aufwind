@@ -31,9 +31,10 @@ function say(text, enabled) {
 /**
  * @param {object} challenge  aus challenges.js
  * @param {{speech:boolean, sound:boolean}} settings
- * @param {(result:{feedback:string, durationSec:number}|null)=>void} onDone  null = abgebrochen
+ * @param {(result:{feedback:string, durationSec:number, partial?:boolean, doneSteps?:number}|null)=>void} onDone  null = abgebrochen
+ * @param {{allowPartial?:boolean}} [opts]  allowPartial: beim Abbrechen darf der geschaffte Teil gespeichert werden
  */
-export function runPlayer(challenge, settings, onDone) {
+export function runPlayer(challenge, settings, onDone, { allowPartial = false } = {}) {
   const root = document.createElement('div');
   root.className = 'player';
   root.setAttribute('role', 'dialog');
@@ -54,6 +55,8 @@ export function runPlayer(challenge, settings, onDone) {
   let paused = false;
   let side = 1; // für perSide-Zeitübungen
   let timer = null;
+  let quitting = false; // Abbrechen-Abfrage offen
+  let pausedBeforeQuit = false;
 
   const sound = (f, ms) => settings.sound && beep(f, ms);
 
@@ -153,10 +156,27 @@ export function runPlayer(challenge, settings, onDone) {
         </div>`;
     }
 
-    root.innerHTML = `${phase === 'done' || phase === 'intro' ? `<div class="row"><button class="icon-btn" data-act="quit" aria-label="Schließen">✕</button></div>` : header()}
+    if (quitting) {
+      const doneSteps = finishedSteps();
+      const min = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
+      const canSave = allowPartial && doneSteps > 0;
+      body = `<div class="hero-emoji">⏸</div><h1>Aufhören?</h1>
+        ${canSave ? `<p>Du hast schon <b>${doneSteps} von ${steps.length}</b> Übungen geschafft (ca. ${min} Min). Das zählt!</p>` : '<p class="muted">Kein Problem – jeder Tag ist anders.</p>'}`;
+      controls = `<div class="feedback">
+        ${canSave ? '<button class="btn" data-act="save-partial">💾 Geschafftes speichern</button>' : ''}
+        <button class="btn soft" data-act="resume">▶ Weitermachen</button>
+        <button class="btn ghost" data-act="discard">${canSave ? 'Verwerfen' : 'Beenden'}</button></div>`;
+    }
+
+    root.innerHTML = `${phase === 'done' || phase === 'intro' || quitting ? `<div class="row"><button class="icon-btn" data-act="${quitting ? 'resume' : 'quit'}" aria-label="${quitting ? 'Zurück zur Übung' : 'Schließen'}">✕</button></div>` : header()}
       <div class="player-body">${body}</div><div class="player-controls">${controls}</div>`;
     const stage = root.querySelector('#fig');
     if (stage && ex) mountFigure(stage, ex.id, { size: 220 });
+  }
+
+  /** Vollständig geschaffte Übungen (in der Pause zählt die gerade beendete mit). */
+  function finishedSteps() {
+    return Math.min(steps.length, phase === 'rest' ? idx + 1 : idx);
   }
 
   function enterWork() {
@@ -223,10 +243,25 @@ export function runPlayer(challenge, settings, onDone) {
       render();
       updateRing();
     } else if (act === 'quit') {
-      if (phase === 'done' || phase === 'intro' || confirm('Challenge abbrechen? Der Fortschritt dieser Einheit wird nicht gespeichert.')) {
-        cleanup();
-        onDone(null);
-      }
+      if (phase === 'done' || phase === 'intro') { cleanup(); onDone(null); return; }
+      quitting = true;
+      pausedBeforeQuit = paused;
+      paused = true;
+      render();
+      root.querySelector('[data-act="resume"]')?.focus();
+    } else if (act === 'resume') {
+      quitting = false;
+      paused = pausedBeforeQuit;
+      render();
+      updateRing();
+    } else if (act === 'discard') {
+      cleanup();
+      onDone(null);
+    } else if (act === 'save-partial') {
+      const doneSteps = finishedSteps();
+      const durationSec = Math.round((Date.now() - startedAt) / 1000);
+      cleanup();
+      onDone({ feedback: 'passt', durationSec, partial: true, doneSteps });
     }
   });
 

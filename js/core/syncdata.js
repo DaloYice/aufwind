@@ -1,5 +1,6 @@
 // Sync-Kern ohne Browser-Abhängigkeiten: Code, Verschlüsselung, Zusammenführen.
 // Läuft im Browser und in Node (WebCrypto über globalThis.crypto).
+import { normalizeRecords, mergeRemoved, mergeSessions, mergeLogs } from './records.js';
 
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const enc = new TextEncoder();
@@ -68,8 +69,6 @@ export function payloadOf(state) {
   };
 }
 
-const sessionKey = (s) => `${s.date}|${s.slot}|${s.slot === 'morning' || s.slot === 'evening' ? '' : `${s.title || ''}|${Math.round(s.durationSec || 0)}`}`;
-
 function unionBy(a = [], b = [], key) {
   const m = new Map();
   for (const x of a) m.set(key(x), x);
@@ -79,9 +78,13 @@ function unionBy(a = [], b = [], key) {
 
 /** Profil zusammenführen: neuerer Stand gewinnt bei Einzelwerten, Verläufe werden vereinigt. */
 export function mergeProfile(x, y) {
-  const [newer, older] = (x.updatedAt || '') >= (y.updatedAt || '') ? [x, y] : [y, x];
+  const [nx, ox] = (x.updatedAt || '') >= (y.updatedAt || '') ? [x, y] : [y, x];
+  const newer = normalizeRecords(JSON.parse(JSON.stringify(nx)));
+  const older = normalizeRecords(JSON.parse(JSON.stringify(ox)));
   const p = JSON.parse(JSON.stringify(newer));
-  p.sessions = unionBy(newer.sessions, older.sessions, sessionKey).sort((a, b) => a.date.localeCompare(b.date));
+  p.removedAt = mergeRemoved(newer.removedAt, older.removedAt);
+  p.sessions = mergeSessions(newer.sessions, older.sessions, p.removedAt);
+  p.swaps = { ...(older.swaps || {}), ...(newer.swaps || {}) };
   p.habits = { ...(older.habits || {}), ...(newer.habits || {}) };
   p.water = { ...(older.water || {}) };
   for (const [d, n] of Object.entries(newer.water || {})) p.water[d] = Math.max(n, p.water[d] || 0);
@@ -95,13 +98,7 @@ export function mergeProfile(x, y) {
   if (p.program && older.program && older.program.id === p.program.id) {
     p.program.done = [...(p.program.done || []), ...(older.program.done || [])].filter((d, i, arr) => arr.indexOf(d) === i).sort();
   }
-  p.removedLogs = [...new Set([...(newer.removedLogs || []), ...(older.removedLogs || [])])];
-  p.logs = {};
-  for (const kind of new Set([...Object.keys(newer.logs || {}), ...Object.keys(older.logs || {})])) {
-    const list = unionBy(newer.logs?.[kind], older.logs?.[kind], (e) => e.date)
-      .filter((e) => !p.removedLogs.includes(`${kind}:${e.date}`));
-    p.logs[kind] = list.sort((a, b) => a.date.localeCompare(b.date));
-  }
+  p.logs = mergeLogs(newer.logs, older.logs, p.removedAt);
   return p;
 }
 

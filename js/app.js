@@ -1,10 +1,11 @@
 import * as store from './store.js';
-import { $, $$, esc, toast, openSheet, closeSheet, fmtAmount, download } from './ui.js';
+import { $, $$, esc, toast, undoToast, openSheet, closeSheet, fmtAmount, download } from './ui.js';
 import { runPlayer } from './player.js';
 import { lineChart } from './chart.js';
 import { toKey, addDays, fromKey, formatDate } from './core/dates.js';
 import { LEVELS, QUESTIONS, HEALTH_FLAGS, assess, bmi, bmiClass } from './core/assessment.js';
-import { challengeFor, habitOfDay, tipOfDay, exerciseSeconds } from './core/challenges.js';
+import { challengeFor, habitOfDay, tipOfDay, exerciseSeconds, canSwap, swapExercise } from './core/challenges.js';
+import { addSession, updateSession, removeSession, restoreSession } from './core/records.js';
 import { streak, adjustIntensity, levelSuggestion, awardBadges, BADGES } from './core/progress.js';
 import { weekStart, weekStats, weekGoal, reviewDue, suggestGoal, reviewMessage, familyProgress, defaultFamilyGoal } from './core/week.js';
 import { EXERCISES, CATEGORIES, POSITIONS, byId } from './data/exercises.js';
@@ -16,7 +17,7 @@ import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported } from './reminders.js';
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung' };
 const view = $('#view');
 const tabbar = $('#tabbar');
@@ -232,15 +233,17 @@ function renderToday(p) {
   const card = (slot) => {
     const c = challengeFor(slot, today, p);
     const d = done(slot);
+    const part = d?.partial;
     const names = [...new Set(c.steps.map((s) => s.id))].map((id) => `<span class="chip">${byId[id].icon} ${esc(byId[id].name)}</span>`).join('');
     const figId = c.steps.find((x) => hasFigure(x.id) && byId[x.id].cat !== 'entspannung')?.id || c.steps[0].id;
     return `<section class="card hero ${slot} ${d ? 'done' : ''}">
       <div class="hero-grid"><div><div class="eyebrow" style="color:inherit;opacity:.85">${slot === 'morning' ? '🌅 Morgen-Challenge' : '🌙 Abend-Challenge'}</div>
         <h2 style="margin:4px 0 2px">${esc(c.title)}</h2>${p.plan?.[slot] ? `<div class="small" style="opacity:.9">📌 ${esc(p.plan[slot])}</div>` : ''}</div>
-        <div class="hero-fig" data-fig="${figId}">${d ? '<span class="done-badge" aria-label="erledigt">✓</span>' : ''}</div></div>
+        <div class="hero-fig" data-fig="${figId}">${d ? `<span class="done-badge" aria-label="${part ? 'teilweise erledigt' : 'erledigt'}">${part ? '½' : '✓'}</span>` : ''}</div></div>
       <div class="chips">${names}</div>
-      <div class="card-foot"><span><b>⏱ ${c.minutes} Min</b>${c.rounds > 1 ? ` · ${c.rounds} Runden` : ''}</span>
-      <button class="btn ${d ? 'light sm' : 'light'}" data-start="${slot}">${d ? 'Nochmal' : "Los geht's"}</button></div>
+      <div class="card-foot"><span>${part ? `<b>Teilweise geschafft</b> · ${Math.max(1, Math.round(d.durationSec / 60))} Min` : `<b>⏱ ${c.minutes} Min</b>${c.rounds > 1 ? ` · ${c.rounds} Runden` : ''}`}</span>
+      <button class="btn ${d && !part ? 'light sm' : 'light'}" data-start="${slot}">${part ? 'Ganz machen' : d ? 'Nochmal' : "Los geht's"}</button></div>
+      ${d && !part ? '' : `<div class="card-links"><button type="button" data-swap="${slot}">🔄 Übungen anpassen</button><button type="button" data-mark="${slot}">✓ Schon erledigt</button></div>`}
     </section>`;
   };
 
@@ -291,6 +294,8 @@ function renderToday(p) {
 
   $$('[data-fig]').forEach((el) => renderStatic(el, el.dataset.fig, 1, 84));
   $$('[data-start]').forEach((b) => b.addEventListener('click', () => startChallenge(p, b.dataset.start)));
+  $$('[data-swap]').forEach((b) => b.addEventListener('click', () => showSwap(p, b.dataset.swap)));
+  $$('[data-mark]').forEach((b) => b.addEventListener('click', () => markDone(p, b.dataset.mark)));
   $('#habit').addEventListener('change', (e) => {
     if (e.target.checked) { p.habits[today] = habit.id; haptic(); toast('Gut gemacht! 🌱'); } else delete p.habits[today];
     finishUpdate(p);
@@ -401,13 +406,81 @@ function startChallenge(p, slot) {
   const c = challengeFor(slot, today, p);
   runPlayer(c, store.getState().settings, (res) => {
     if (!res) return;
-    const already = p.sessions.some((s) => s.date === today && s.slot === slot);
-    if (!already) p.sessions.push({ date: today, slot, feedback: res.feedback, durationSec: res.durationSec, title: c.title, cats: catSeconds(c, res.durationSec) });
+    if (res.partial) {
+      const { added } = addSession(p, { date: today, slot, partial: true, feedback: 'passt', durationSec: res.durationSec, title: c.title, cats: catSeconds(c, res.durationSec) });
+      finishUpdate(p);
+      renderToday(p);
+      toast(added ? `Gespeichert: ${res.doneSteps} von ${c.steps.length} Übungen 💚` : 'Schon eingetragen – stark, dass du nochmal dran warst! 💚');
+      return;
+    }
+    addSession(p, { date: today, slot, feedback: res.feedback, durationSec: res.durationSec, title: c.title, cats: catSeconds(c, res.durationSec) });
     p.intensity = adjustIntensity(p.intensity, res.feedback);
     finishUpdate(p);
     renderToday(p);
     feedbackToast(res.feedback);
+  }, { allowPartial: true });
+}
+
+/** Challenge ohne geführten Modus als erledigt eintragen (z. B. ohne Handy gemacht). */
+function markDone(p, slot) {
+  const today = toKey();
+  const c = challengeFor(slot, today, p);
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">✓ Schon erledigt?</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+    <p class="muted">Super! Wir tragen „${esc(c.title)}“ mit ca. ${c.minutes} Min ein. Wie war's?</p>
+    <div class="feedback">
+      <button class="btn soft" data-fb="leicht">😌 Zu leicht – gerne mehr</button>
+      <button class="btn" data-fb="passt">👍 Genau richtig</button>
+      <button class="btn soft" data-fb="schwer">😮‍💨 Zu anstrengend</button>
+    </div>`);
+  $$('[data-fb]', sheet).forEach((b) => b.addEventListener('click', () => {
+    const fb = b.dataset.fb;
+    addSession(p, { date: today, slot, manual: true, feedback: fb, durationSec: c.durationSec, title: c.title, cats: catSeconds(c, c.durationSec) });
+    p.intensity = adjustIntensity(p.intensity, fb);
+    closeSheet();
+    finishUpdate(p);
+    renderToday(p);
+    haptic();
+    feedbackToast(fb);
+  }));
+}
+
+/** Übungen der heutigen Challenge einzeln tauschen (gilt nur für heute). */
+function showSwap(p, slot) {
+  const today = toKey();
+  const draw = (focusId) => {
+    const c = challengeFor(slot, today, p);
+    const ids = [...new Set(c.steps.map((s) => s.id))];
+    const swapped = Object.keys(p.swaps?.[`${today}|${slot}`] || {}).length > 0;
+    const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">🔄 Übungen anpassen</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+      <p class="muted small">Passt heute etwas nicht – weil ein Gelenk zwickt oder kein Stuhl da ist? Tausch die Übung gegen eine aus dem gleichen Bereich. Gilt nur für heute.</p>
+      <ul class="log-list">${ids.map((id) => {
+        const ex = byId[id];
+        const amount = c.steps.find((s) => s.id === id).amount;
+        return `<li><span><b>${ex.icon} ${esc(ex.name)}</b><br><span class="small muted">${CATEGORIES[ex.cat].label} · ${esc(fmtAmount(ex, amount))}</span></span>
+          ${canSwap(slot, today, p, id) ? `<button class="btn soft sm" data-sw="${id}" aria-label="${esc(ex.name)} tauschen">🔄 Tauschen</button>` : '<span class="small muted">keine Alternative</span>'}</li>`;
+      }).join('')}</ul>
+      <div class="row" style="margin-top:16px">${swapped ? '<button class="btn ghost" id="sw-reset">Zurücksetzen</button>' : ''}<button class="btn" data-close style="flex:1">Fertig</button></div>`);
+    $$('[data-sw]', sheet).forEach((b) => b.addEventListener('click', () => {
+      const to = swapExercise(p, slot, today, b.dataset.sw);
+      store.save();
+      draw(to);
+    }));
+    $('#sw-reset', sheet)?.addEventListener('click', () => {
+      delete p.swaps[`${today}|${slot}`];
+      store.save();
+      draw();
+    });
+    if (focusId) $(`[data-sw="${focusId}"]`, sheet)?.focus();
+  };
+  draw();
+  // Heute-Ansicht nach dem Schließen aktualisieren
+  const ov = $('#overlay');
+  const obs = new MutationObserver(() => {
+    if (!ov.hidden) return;
+    obs.disconnect();
+    if (currentRoute === 'heute') renderToday(p);
   });
+  obs.observe(ov, { attributes: true, attributeFilter: ['hidden'] });
 }
 
 function startProgramSession(p) {
@@ -416,7 +489,15 @@ function startProgramSession(p) {
   runPlayer(c, store.getState().settings, (res) => {
     if (!res) return;
     const today = toKey();
-    p.sessions.push({ date: today, slot: 'program', feedback: res.feedback, durationSec: res.durationSec, title: c.title, cats: catSeconds(c, res.durationSec) });
+    if (res.partial) {
+      // Teil-Einheit zählt als Bewegung, schaltet das Programm aber nicht weiter
+      addSession(p, { date: today, slot: 'extra', partial: true, feedback: 'passt', durationSec: res.durationSec, title: `${c.title} (Teil)`, cats: catSeconds(c, res.durationSec) });
+      finishUpdate(p);
+      renderToday(p);
+      toast('Gespeichert – die Programm-Einheit wartet weiter auf dich 💚', 3500);
+      return;
+    }
+    addSession(p, { date: today, slot: 'program', feedback: res.feedback, durationSec: res.durationSec, title: c.title, cats: catSeconds(c, res.durationSec) });
     p.program.done.push(today);
     const st = programState(p.program);
     if (st.finished) {
@@ -427,25 +508,52 @@ function startProgramSession(p) {
     finishUpdate(p);
     renderToday(p);
     if (!st.finished) feedbackToast(res.feedback);
-  });
+  }, { allowPartial: true });
+}
+
+const EXTRA_KINDS = [['🚶 Spaziergang', 'ausdauer'], ['🚴 Radfahren', 'ausdauer'], ['🏊 Schwimmen / Aqua', 'ausdauer'], ['💃 Tanzen', 'ausdauer'], ['🧘 Yoga', 'mobil'],
+  ['🌳 Gartenarbeit', 'ausdauer'], ['🏋️ Fitnessstudio', 'kraft'], ['⚽ Sport', 'ausdauer'], ['🧹 Hausarbeit (aktiv)', 'ausdauer']];
+const QUICK_MIN = [10, 20, 30, 45, 60];
+
+/** Datum-Chips: heute, gestern, vorgestern. */
+function dayChips(selected) {
+  const today = toKey();
+  return [0, -1, -2].map((n) => {
+    const d = addDays(today, n);
+    const label = n === 0 ? 'Heute' : n === -1 ? 'Gestern' : fromKey(d).toLocaleDateString('de-DE', { weekday: 'long' });
+    return `<button type="button" data-day="${d}" class="${d === selected ? 'selected' : ''}" aria-pressed="${d === selected}">${label}</button>`;
+  }).join('');
 }
 
 function extraActivity(p) {
-  const kinds = [['🚶 Spaziergang', 'ausdauer'], ['🚴 Radfahren', 'ausdauer'], ['🏊 Schwimmen / Aqua', 'ausdauer'], ['💃 Tanzen', 'ausdauer'], ['🧘 Yoga', 'mobil'],
-    ['🌳 Gartenarbeit', 'ausdauer'], ['🏋️ Fitnessstudio', 'kraft'], ['⚽ Sport', 'ausdauer'], ['🧹 Hausarbeit (aktiv)', 'ausdauer']];
+  const last = p.lastExtra || {};
+  const kindIdx = Math.max(0, EXTRA_KINDS.findIndex(([k]) => k === last.title));
+  let date = toKey();
   const sheet = openSheet(`<h2>Andere Bewegung</h2><p class="muted small">Alles zählt! Das hält auch deine Serie am Leben.</p>
-    <div class="stack"><label class="field"><span>Was hast du gemacht?</span><select id="x-kind">${kinds.map(([k], i) => `<option value="${i}">${k}</option>`).join('')}</select></label>
-    <label class="field"><span>Wie viele Minuten?</span><input type="number" id="x-min" inputmode="numeric" min="1" max="600" value="15"></label>
+    <div class="stack"><label class="field"><span>Was hast du gemacht?</span><select id="x-kind">${EXTRA_KINDS.map(([k], i) => `<option value="${i}" ${i === kindIdx ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+    <div class="field"><span>Wann?</span><div class="chips-select" role="group" aria-label="Tag">${dayChips(date)}</div></div>
+    <div class="field"><span>Wie viele Minuten?</span>
+      <div class="chips-select" role="group" aria-label="Schnellauswahl Minuten">${QUICK_MIN.map((m) => `<button type="button" data-min="${m}">${m}</button>`).join('')}</div>
+      <input type="number" id="x-min" inputmode="numeric" min="1" max="600" value="${last.min || 15}" aria-label="Minuten" style="margin-top:8px"></div>
     <div class="row"><button class="btn ghost" data-close>Abbrechen</button><button class="btn" id="x-save" style="flex:1">Speichern</button></div></div>`);
+  const markMin = () => $$('[data-min]', sheet).forEach((b) => b.classList.toggle('selected', b.dataset.min === $('#x-min', sheet).value));
+  markMin();
+  $$('[data-min]', sheet).forEach((b) => b.addEventListener('click', () => { $('#x-min', sheet).value = b.dataset.min; markMin(); }));
+  $('#x-min', sheet).addEventListener('input', markMin);
+  $$('[data-day]', sheet).forEach((b) => b.addEventListener('click', () => {
+    date = b.dataset.day;
+    $$('[data-day]', sheet).forEach((x) => { x.classList.toggle('selected', x === b); x.setAttribute('aria-pressed', String(x === b)); });
+  }));
   $('#x-save', sheet).addEventListener('click', () => {
     const min = Number($('#x-min', sheet).value);
     if (!(min > 0)) return;
-    const [title, cat] = kinds[Number($('#x-kind', sheet).value)];
-    p.sessions.push({ date: toKey(), slot: 'extra', title, durationSec: min * 60, feedback: 'passt', cats: { [cat]: min * 60 } });
+    const [title, cat] = EXTRA_KINDS[Number($('#x-kind', sheet).value)];
+    addSession(p, { date, slot: 'extra', title, durationSec: min * 60, feedback: 'passt', cats: { [cat]: min * 60 } });
+    p.lastExtra = { title, min };
     closeSheet();
     finishUpdate(p);
     renderToday(p);
-    toast('Eingetragen – stark! 💪');
+    toast(date === toKey() ? 'Eingetragen – stark! 💪' : `Nachgetragen für ${formatDate(date, { weekday: 'long' })} ✓`);
   });
 }
 
@@ -595,6 +703,57 @@ const LOG_KINDS = {
 };
 let logKind = 'weight';
 let progTab = 'overview';
+let showAllSessions = false;
+let logsOpen = false;
+const FEEDBACK_ICON = { leicht: '😌', passt: '👍', schwer: '😮‍💨' };
+
+/** Einheit ändern (Minuten, Gefühl, bei freier Bewegung auch den Tag) oder löschen – mit Rückgängig. */
+function editSession(p, id) {
+  const s = p.sessions.find((x) => x.id === id);
+  if (!s) return;
+  const free = s.slot === 'extra'; // Morgen/Abend/Programm hängen am Tag
+  let date = s.date;
+  let fb = s.feedback || 'passt';
+  const sheet = openSheet(`<div class="row spread"><h2 style="margin:0">Einheit bearbeiten</h2><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+    <p class="muted small">${esc(s.title || SLOT_NAMES[s.slot])} · ${formatDate(s.date, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+    <div class="stack">
+      <label class="field"><span>Minuten</span><input type="number" id="e-min" inputmode="numeric" min="1" max="600" value="${Math.max(1, Math.round((s.durationSec || 0) / 60))}"></label>
+      ${free && date >= addDays(toKey(), -2) ? `<div class="field"><span>Tag</span><div class="chips-select" role="group" aria-label="Tag">${dayChips(date)}</div></div>` : ''}
+      <div class="field"><span>Wie war's?</span><div class="chips-select" role="group" aria-label="Gefühl">${Object.entries({ leicht: '😌 leicht', passt: '👍 passt', schwer: '😮‍💨 schwer' })
+        .map(([k, l]) => `<button type="button" data-efb="${k}" class="${k === fb ? 'selected' : ''}" aria-pressed="${k === fb}">${l}</button>`).join('')}</div></div>
+      <div class="row"><button class="btn danger" id="e-del">Löschen</button><button class="btn" id="e-save" style="flex:1">Speichern</button></div>
+    </div>`);
+  const pick = (attr, set) => $$(`[${attr}]`, sheet).forEach((b) => b.addEventListener('click', () => {
+    set(b);
+    $$(`[${attr}]`, sheet).forEach((x) => { x.classList.toggle('selected', x === b); x.setAttribute('aria-pressed', String(x === b)); });
+  }));
+  pick('data-day', (b) => { date = b.dataset.day; });
+  pick('data-efb', (b) => { fb = b.dataset.efb; });
+  $('#e-save', sheet).addEventListener('click', () => {
+    const min = Number($('#e-min', sheet).value);
+    if (!(min > 0)) return;
+    const sec = min * 60;
+    const f = s.durationSec ? sec / s.durationSec : 1;
+    const cats = Object.fromEntries(Object.entries(s.cats || {}).map(([k, v]) => [k, Math.round(v * f)]));
+    updateSession(p, id, { durationSec: sec, feedback: fb, date, cats });
+    closeSheet();
+    finishUpdate(p);
+    renderProgress(p);
+    toast('Gespeichert ✓');
+  });
+  $('#e-del', sheet).addEventListener('click', () => {
+    const removed = removeSession(p, id);
+    closeSheet();
+    store.save();
+    renderProgress(p);
+    undoToast('Einheit gelöscht', () => {
+      restoreSession(p, removed);
+      store.save();
+      if (currentRoute === 'fortschritt') renderProgress(p);
+      toast('Wiederhergestellt ✓');
+    });
+  });
+}
 
 function renderProgress(p) {
   const tabs = [['overview', 'Überblick'], ['werte', 'Messwerte'], ['abzeichen', 'Abzeichen']];
@@ -603,7 +762,11 @@ function renderProgress(p) {
   if (progTab === 'overview') {
     body = `${renderDashboard(p)}
       <button class="btn soft block" id="last-review" style="margin-top:16px">📊 Rückblick auf letzte Woche</button>
-      <section class="card" style="margin-top:16px"><h3>Letzte Einheiten</h3>${p.sessions.length ? `<ul class="log-list">${p.sessions.slice(-12).reverse().map((s) => `<li><span>${formatDate(s.date)} · ${esc(s.title || SLOT_NAMES[s.slot] || s.slot)}</span><span class="small muted">${Math.round((s.durationSec || 0) / 60)} Min ${s.feedback === 'leicht' ? '😌' : s.feedback === 'schwer' ? '😮‍💨' : '👍'}</span></li>`).join('')}</ul>` : '<p class="muted">Noch keine Einheiten – deine erste Challenge wartet unter „Heute“.</p>'}</section>`;
+      <section class="card" style="margin-top:16px"><h3>${showAllSessions ? 'Alle Einheiten' : 'Letzte Einheiten'}</h3>${p.sessions.length ? `<p class="small muted" style="margin:0 0 4px">Tippe auf eine Einheit, um sie zu ändern oder zu löschen.</p>
+        <ul class="log-list sess-list">${(showAllSessions ? p.sessions : p.sessions.slice(-12)).slice().reverse().map((s) => `<li><button type="button" data-sess="${s.id}">
+          <span>${formatDate(s.date)} · ${esc(s.title || SLOT_NAMES[s.slot] || s.slot)}${s.partial ? ' <span class="small muted">(Teil)</span>' : ''}</span>
+          <span class="small muted">${Math.round((s.durationSec || 0) / 60)} Min ${FEEDBACK_ICON[s.feedback] || '👍'} <span aria-hidden="true">›</span></span></button></li>`).join('')}</ul>
+        ${p.sessions.length > 12 ? `<button class="btn ghost sm block" id="sess-all" style="margin-top:8px">${showAllSessions ? 'Weniger anzeigen' : `Alle ${p.sessions.length} anzeigen`}</button>` : ''}` : '<p class="muted">Noch keine Einheiten – deine erste Challenge wartet unter „Heute“.</p>'}</section>`;
   } else if (progTab === 'werte') {
     body = measurementsHTML(p);
   } else {
@@ -619,6 +782,8 @@ function renderProgress(p) {
   if (progTab === 'overview') {
     bindTips(view);
     $('#last-review').addEventListener('click', () => showReview(p, addDays(weekStart(), -7)));
+    $$('[data-sess]').forEach((b) => b.addEventListener('click', () => editSession(p, b.dataset.sess)));
+    $('#sess-all')?.addEventListener('click', () => { showAllSessions = !showAllSessions; renderProgress(p); });
   }
   if (progTab === 'werte') { bindMeasurements(p); bindTips(view); }
 }
@@ -640,11 +805,12 @@ function measurementsHTML(p) {
       <button class="btn" type="submit" aria-label="Speichern">+</button>
     </form>
     ${logKind === 'weight' ? '<p class="small muted" style="margin:8px 0 0">Tipp: Immer zur gleichen Zeit wiegen, z. B. morgens nach dem Aufstehen. Tagesschwankungen von 1–2 kg sind normal.</p>' : ''}
-    ${entries.length ? `<details style="margin-top:12px"><summary>Alle Einträge (${entries.length})</summary><ul class="log-list">${entries.slice().reverse().map((e) => `<li><span>${formatDate(e.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</span><span><b>${e.value}</b> ${k.unit} <button class="btn ghost sm" data-del="${e.date}" aria-label="Eintrag vom ${formatDate(e.date)} löschen">✕</button></span></li>`).join('')}</ul></details>` : ''}
+    ${entries.length ? `<details id="log-all" style="margin-top:12px" ${logsOpen ? 'open' : ''}><summary>Alle Einträge (${entries.length})</summary><ul class="log-list">${entries.slice().reverse().map((e) => `<li><span>${formatDate(e.date, { day: '2-digit', month: '2-digit', year: 'numeric' })}</span><span><b>${e.value}</b> ${k.unit} <button class="btn ghost sm" data-del="${e.date}" aria-label="Eintrag vom ${formatDate(e.date)} löschen">✕</button></span></li>`).join('')}</ul></details>` : ''}
   </section>`;
 }
 
 function bindMeasurements(p) {
+  $('#log-all')?.addEventListener('toggle', (e) => { logsOpen = e.target.open; });
   $$('[data-kind]').forEach((b) => b.addEventListener('click', () => { logKind = b.dataset.kind; renderProgress(p); }));
   $('#log-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -656,7 +822,16 @@ function bindMeasurements(p) {
     toast('Gespeichert ✓');
   });
   $$('[data-del]').forEach((b) => b.addEventListener('click', () => {
-    if (confirm('Eintrag löschen?')) { store.removeLog(p, logKind, b.dataset.del); renderProgress(p); }
+    const kind = logKind;
+    const entry = store.removeLog(p, kind, b.dataset.del);
+    renderProgress(p);
+    if (entry) {
+      undoToast('Eintrag gelöscht', () => {
+        store.restoreLog(p, kind, entry);
+        if (currentRoute === 'fortschritt') renderProgress(p);
+        toast('Wiederhergestellt ✓');
+      });
+    }
   }));
 }
 
@@ -894,8 +1069,25 @@ function showJoin(prefill = '') {
 }
 
 // ---------- Start ----------
+/** Hinweis, wenn eine neue Version bereitsteht – der laufende Code ist dann noch der alte. */
+function showUpdateBar() {
+  if ($('#update-bar')) return;
+  const bar = document.createElement('div');
+  bar.id = 'update-bar';
+  bar.className = 'update-bar';
+  bar.setAttribute('role', 'status');
+  bar.innerHTML = '<span>✨ Neue Version von Aufwind ist da.</span><button type="button" class="btn light sm">Neu laden</button>';
+  $('button', bar).addEventListener('click', () => location.reload());
+  document.body.appendChild(bar);
+}
+
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    // Beim Zurückkehren in die App nach einer neuen Version schauen
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+  }).catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) showUpdateBar(); });
 }
 route();
 startReminders();
