@@ -16,6 +16,7 @@ export const PAIN_LABELS = { knie: 'Knie', huefte: 'Hüfte', ruecken: 'Rücken',
  * warm: mit Aufwärmen am Anfang, cool: mit Runterkommen am Ende (ab 10 Minuten).
  * interval: Intervall-Training (HIIT) – jede Übung auf Zeit, feste kurze Pausen (INTERVALS je Level).
  * only: 'jump' = nur Sprungübungen, 'equip' = nur Geräte-Übungen. minLevel: erst ab diesem Level angeboten.
+ * fixed: Reihenfolge wie in ids (nicht mischen), eine Runde. hidden: kein Chip in „Schnell trainieren“ (nur in Welten).
  */
 export const FOCUS = {
   ganzkoerper: { label: 'Ganzkörper', icon: 'user', cats: ['kraft', 'ausdauer', 'balance'], warm: true, cool: true },
@@ -29,6 +30,10 @@ export const FOCUS = {
   dehnen: { label: 'Dehnen & Entspannen', icon: 'moon', cats: ['mobil', 'entspannung'], exclude: ['dankbarkeit'], warm: false, cool: false },
   beckenboden: { label: 'Beckenboden', icon: 'flower', cats: ['beckenboden'], first: ['bb_wahrnehmen'], warm: false, cool: false, noExtend: true, rest: 10 },
   kraft: { label: 'Kraft', icon: 'dumbbell', cats: ['kraft'], warm: true, cool: true },
+  darts: { label: 'Darts', icon: 'target', ids: ['aussenrotation', 'wandplus', 'ytw', 'handgelenkbeuger', 'unterarmdrehen', 'fingerspreizen', 'wurfstand', 'band_pullapart', 'band_rudern', 'bodenplank', 'seitstuetz', 'einbeinstand', 'tischplank'], warm: true, cool: true },
+  // Feste Abläufe der Darts-Welt (nicht als Schwerpunkt-Chip): Reihenfolge bleibt wie angegeben
+  darts_warm: { label: 'Darts: Aufwärmen', icon: 'target', ids: ['schulterkreisen', 'armschwung', 'aussenrotation', 'unterarmdehnung', 'fingerspreizen', 'kinnzurueck', 'zielatmung'], fixed: true, hidden: true, noExtend: true, rest: 10 },
+  darts_cool: { label: 'Darts: Abwärmen', icon: 'target', ids: ['unterarmdehnung', 'brustdehnung', 'kinnzurueck', 'waden', 'seitneigung', 'bauchatmung'], fixed: true, hidden: true, noExtend: true, rest: 10 },
   aufwaermen: { label: 'Aufwärmen', icon: 'sun', ids: ['schulterkreisen', 'fussgelenke', 'rumpfdrehung', 'seitneigung', 'marschsitzend', 'marschstehend', 'fersenheben', 'waden', 'armschwung', 'hueftoeffner', 'brustdehnung'], warm: false, cool: false },
 };
 
@@ -37,7 +42,7 @@ export const INTERVALS = { 4: [30, 30], 5: [30, 20], 6: [40, 20], 7: [40, 15], 8
 export const intervalFor = (level) => INTERVALS[Math.max(4, Math.min(8, level))];
 
 /** Wird der Schwerpunkt für dieses Profil angeboten? (Level-Grenze, Geräte vorhanden) */
-export const focusAvailable = (f, profile) => (!f.minLevel || profile.level >= f.minLevel)
+export const focusAvailable = (f, profile) => !f.hidden && (!f.minLevel || profile.level >= f.minLevel)
   && (f.only !== 'equip' || (profile.equipment || []).length > 0)
   && (f.only !== 'jump' || !profile.noJumps);
 

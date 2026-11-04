@@ -60,7 +60,7 @@ export function customWorkout({ minutes, focus, mix = 0 }, profile, dateKey) {
   const cost = (list) => list.reduce((t, s) => t + exerciseSeconds(s) + rest, 0);
 
   // Hauptteil: Pool gemischt durchlaufen, bei Bedarf in weiteren Runden, bis die Zeit gefüllt ist
-  let order = shuffle(pool.filter((e) => !used.has(e.id)), rand);
+  let order = f.fixed ? pool.filter((e) => !used.has(e.id)) : shuffle(pool.filter((e) => !used.has(e.id)), rand);
   // Feste Einstiegsübung (z. B. Beckenboden: erst spüren, dann trainieren)
   const first = (f.first || []).map((id) => order.find((e) => e.id === id)).filter(Boolean);
   order = [...first, ...order.filter((e) => !first.includes(e))];
@@ -73,10 +73,10 @@ export function customWorkout({ minutes, focus, mix = 0 }, profile, dateKey) {
   if (!order.length) order = shuffle(pool, rand);
   const main = [];
   let spent = cost(warm) + cost(cool);
-  for (let i = 0; i < order.length * 3; i++) { // höchstens 3 Runden
+  for (let i = 0; i < order.length * (f.fixed ? 1 : 3); i++) { // höchstens 3 Runden (feste Abläufe: eine)
     const s = (f.interval ? intervalStep : step)(order[i % order.length].id, Math.floor(i / order.length) + 1);
     const c = exerciseSeconds(s) + rest;
-    if (main.length && spent + c > budget + 20) break;
+    if (main.length && spent + c > budget + 20 && !f.fixed) break; // feste Abläufe immer vollständig
     main.push(s);
     spent += c;
   }

@@ -1,3 +1,6 @@
 node_modules/
 *.log
 
+
+# Wrangler-Cache (Kontodaten, nicht ins Repo)
+.wrangler/

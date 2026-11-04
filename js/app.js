@@ -23,7 +23,7 @@ import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported, pushSupport, pushActive, enablePush, disablePush, syncPush, reportDone } from './reminders.js';
 
-const VERSION = '0.11.0';
+const VERSION = '0.12.0';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung', custom: 'Training nach Wunsch' };
 const view = $('#view');
 const tabbar = $('#tabbar');
@@ -914,6 +914,8 @@ function renderWorld(p, id) {
     <div class="stack">
       <section class="card"><p style="margin:0 0 12px">${esc(w.intro)}</p><ul class="points">${w.points.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
       ${w.safety ? `<div class="warn small"><b>Wichtig:</b> ${esc(w.safety)}</div>` : ''}
+      ${w.routines ? `<section class="card"><h3>Feste Abläufe</h3><div class="ex-list">${w.routines.map((r, k) => `<button type="button" class="ex-item" data-routine="${k}">${icoTile('target', w.tone)}
+        <span class="grow"><b>${esc(r.title)}</b><br><span class="small muted">ca. ${customWorkout({ minutes: r.minutes, focus: r.focus }, atDifficulty(p), toKey()).minutes} Min · ${esc(r.desc)}</span></span><span class="chev">${ICON.play}</span></button>`).join('')}</div></section>` : ''}
       ${noGear ? `<section class="card"><p style="margin:0 0 12px">Sag uns zuerst, welche Geräte du hast – dann stellen wir die Workouts danach zusammen.</p><a class="btn soft" href="#/profil">Ausstattung im Profil wählen</a></section>`
         : workoutPicker(p, wish, c, { title: `${w.title}: Kurz-Workout`, sub: 'Dauer wählen, mischen, loslegen.', focusChips: false })}
       <section class="card"><h3>Übungen</h3><ul class="log-list world-ex">${exs.map((e) => {
@@ -925,6 +927,10 @@ function renderWorld(p, id) {
       <section class="card"><div class="card-head">${icoTile('bulb', 'orange')}<div class="eyebrow">Tipps</div></div><ul class="points">${w.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
     </div>`;
   if (!noGear) bindPicker(p, wish, c, () => renderWorld(p, id));
+  $$('[data-routine]').forEach((b) => b.addEventListener('click', () => {
+    const r = w.routines[Number(b.dataset.routine)];
+    startCustom(p, { ...customWorkout({ minutes: r.minutes, focus: r.focus }, atDifficulty(p), toKey()), title: r.title });
+  }));
   drawThumbs();
   $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex)));
 }

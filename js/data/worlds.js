@@ -106,9 +106,31 @@ export const WORLDS = {
       'Negativ-Klimmzüge sind der schnellste Weg zum ersten echten Klimmzug.',
     ],
   },
+  darts: {
+    focus: 'darts', icon: 'target', tone: 'green', art: ['wurfstand', 0],
+    title: 'Darts',
+    teaser: 'Stabile Wurfschulter, ruhiger Stand, lockere Unterarme – fit fürs Board.',
+    intro: 'Darts sieht nach „nur Arm“ aus, verlangt aber viel: Die Wurfschulter arbeitet bei jedem Dart vor dem Körper, Ellbogen und Handgelenk sorgen für ein gleiches Loslassen, und über lange Abende soll der Körper beim Zielen ganz still stehen. Gezieltes Training macht Würfe gleichmäßiger und beugt Überlastung vor.',
+    points: [
+      'Vor dem Spiel 5 Minuten aufwärmen: Schulter, Handgelenk, Atmung – erst dann der erste Dart.',
+      'Wurfarm-Kraft 2–3× pro Woche, leicht und sauber statt schwer.',
+      'Nach langen Abenden Unterarm, Brust und Nacken dehnen.',
+    ],
+    safety: 'Schmerzt der Wurfarm-Ellbogen oder die Schulter beim Werfen, länger als ein paar Tage oder auch in Ruhe, bitte ärztlich bzw. physiotherapeutisch abklären lassen – nicht „durchwerfen“.',
+    tips: [
+      'Gleicher Stand, gleiche Atmung, gleicher Ablauf: Routine beruhigt die Hand.',
+      'Pausen zwischen den Legs nutzen: Schultern kreisen, Unterarm kurz dehnen.',
+      'Training ersetzt kein Werfen – aber es hilft, dass der Körper die Würfe länger gleich macht.',
+    ],
+    routines: [
+      { focus: 'darts_warm', minutes: 5, title: 'Aufwärmen vor dem Spiel', desc: 'Schulter, Unterarm, Finger, Nacken – zum Schluss die Ziel-Atmung.' },
+      { focus: 'darts_cool', minutes: 5, title: 'Abwärmen nach dem Spiel', desc: 'Unterarm, Brust, Nacken und Beine lockern.' },
+    ],
+  },
 };
 
 /** Schwierigkeit für Schnell-Training und Welten (null = eigenes Level). */
+// (Welten mit `routines` zeigen zusätzlich feste Abläufe mit eigenem Start-Knopf.)
 export const DIFFICULTY = {
   einsteiger: { label: 'Einsteiger', level: 1 }, mittel: { label: 'Mittel', level: 3 },
   fortgeschritten: { label: 'Fortgeschritten', level: 5 }, athletisch: { label: 'Athletisch', level: 7 },

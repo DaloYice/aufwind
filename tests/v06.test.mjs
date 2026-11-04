@@ -17,7 +17,7 @@ test('Fokus- und Belastungsdaten verweisen nur auf echte Übungen', () => {
 });
 
 test('Wunsch-Training: passende Dauer, nur Level-Übungen, stabil, „Neu mischen“ ändert etwas', () => {
-  for (const level of [1, 2, 3, 4, 5]) for (const focus of Object.keys(FOCUS)) for (const minutes of QUICK_MINUTES) {
+  for (const level of [1, 2, 3, 4, 5]) for (const focus of Object.keys(FOCUS).filter((k) => !FOCUS[k].hidden)) for (const minutes of QUICK_MINUTES) {
     const p = prof({ level });
     const c = customWorkout({ minutes, focus }, p, D);
     assert.ok(c.steps.length >= 2, `${level}/${focus}/${minutes}`);

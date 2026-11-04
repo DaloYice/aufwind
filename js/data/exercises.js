@@ -1,6 +1,7 @@
 // Übungsbibliothek. base = Menge je Level 1–8 (null oder fehlend = für dieses Level nicht vorgesehen).
 // unit: 'sek' (Zeit) oder 'wdh' (Wiederholungen). perSide: Menge gilt je Seite.
 // jump: Sprungübung – erst ab Level 6 und im Profil abschaltbar. equip: braucht eines dieser Geräte (Profil-Ausstattung).
+// special: nur in einer Trainingswelt (z. B. 'darts'), nie in den täglichen Challenges.
 // Grundsatz für Level 1–2: gelenkschonend, keine Sprünge, keine Bodenübungen.
 
 export const CATEGORIES = {
@@ -603,6 +604,77 @@ export const EXERCISES = [
     tip: 'Stärkt die seitliche Hüfte – schützt die Knie beim Laufen und Springen.',
     easier: 'Band oberhalb der Knie, kleinere Schritte.', harder: 'Band an den Knöcheln, tiefer in die Knie.',
   },
+  // ---------- Ab v0.12.0: Darts (special: 'darts' – nur in der Darts-Welt, nicht in den täglichen Challenges) ----------
+  {
+    id: 'aussenrotation', name: 'Außenrotation der Schulter', icon: '🔄', cat: 'kraft', pos: 'stehend', perSide: true, special: 'darts',
+    unit: 'wdh', base: [8, 10, 12, 12, 15, 15, 15, 15],
+    steps: ['Ellbogen 90° gebeugt fest an der Seite, eingerolltes Handtuch zwischen Ellbogen und Körper.', 'Unterarm langsam nach außen drehen – der Ellbogen bleibt am Körper.', 'Langsam zurück. Mit Band (an der Türklinke) oder ganz ohne Gewicht.'],
+    tip: 'Die kleinen Rotatorenmuskeln halten die Wurfschulter stabil – leicht und sauber statt schwer.',
+    easier: 'Ohne Band, nur die Bewegung.', harder: 'Stärkeres Band oder 3 Sekunden zurück.',
+  },
+  {
+    id: 'ytw', name: 'Y-T-W am Boden', icon: '✈️', cat: 'kraft', pos: 'boden', special: 'darts',
+    unit: 'wdh', base: [null, null, 6, 8, 8, 10, 10, 12],
+    steps: ['Bauchlage, Stirn auf einem Handtuch, Daumen zeigen nach oben.', 'Arme abwechselnd als Y (schräg nach vorne), T (zur Seite) und W (Ellbogen gebeugt) anheben.', 'Schulterblätter jeweils zusammen und nach unten ziehen, kurz halten.'],
+    tip: 'Kräftigt den oberen Rücken – das Gegengewicht zum Wurfarm, der immer nach vorne arbeitet.',
+    easier: 'Im Stehen vorgebeugt, Hände auf den Knien abwechselnd.', harder: 'Oben 3 Sekunden halten.',
+  },
+  {
+    id: 'wandplus', name: 'Wandliegestütz-Plus', icon: '🧱', cat: 'kraft', pos: 'stehend', special: 'darts',
+    unit: 'wdh', base: [8, 10, 12, 12, 15, 15, 15, 15],
+    steps: ['Hände schulterbreit an die Wand, Arme gestreckt.', 'Ohne die Arme zu beugen: Schulterblätter zusammenziehen (Brust Richtung Wand) …', '… und dann weit auseinanderschieben (Rücken rund nach hinten).'],
+    tip: 'Trainiert den Sägezahnmuskel – er führt das Schulterblatt und stabilisiert den Wurfarm.',
+    easier: 'Kleinere Bewegung.', harder: 'Am Tisch oder im Liegestütz am Boden.',
+  },
+  {
+    id: 'handgelenkbeuger', name: 'Handgelenk beugen und strecken', icon: '🍶', cat: 'kraft', pos: 'sitzend', perSide: true, special: 'darts',
+    unit: 'wdh', base: [10, 12, 12, 15, 15, 15, 20, 20],
+    steps: ['Unterarm auf dem Oberschenkel, Hand über dem Knie, eine kleine Wasserflasche in der Hand.', 'Handgelenk langsam nach oben beugen und ebenso langsam ablassen.', 'Danach Handfläche nach unten drehen und das Handgelenk strecken.'],
+    tip: 'Langsames Ablassen (3 Sekunden) beugt dem typischen Werfer-Ellbogen vor.',
+    easier: 'Ohne Gewicht.', harder: 'Volle 0,5-l-Flasche oder 1 kg.',
+  },
+  {
+    id: 'unterarmdrehen', name: 'Unterarm drehen', icon: '🔧', cat: 'kraft', pos: 'sitzend', perSide: true, special: 'darts',
+    unit: 'wdh', base: [10, 10, 12, 12, 15, 15, 15, 15],
+    steps: ['Unterarm auf dem Oberschenkel, Flasche am unteren Ende halten wie einen Hammer.', 'Langsam nach innen drehen, bis die Flasche waagerecht ist.', 'Zurück zur Mitte und nach außen drehen.'],
+    tip: 'Je weiter du die Flasche am Ende hältst, desto schwerer wird es.',
+    easier: 'Flasche weiter oben greifen.', harder: 'Am Ende greifen und 2 Sekunden halten.',
+  },
+  {
+    id: 'fingerspreizen', name: 'Finger spreizen und greifen', icon: '🖐️', cat: 'kraft', pos: 'sitzend', special: 'darts',
+    unit: 'sek', base: [30, 30, 40, 40, 45, 45, 60, 60], cue: [['Spreizen', 2], ['Locker', 2]],
+    steps: ['Gummiband um die Finger legen (oder ohne).', 'Alle Finger kraftvoll spreizen …', '… und wieder locker zusammenführen. Danach einen weichen Ball kneten.'],
+    tip: 'Kräftige, ausgeglichene Finger halten den Griff bei jedem Dart gleich.',
+    easier: 'Ohne Band.', harder: 'Zwei Bänder oder festerer Ball.',
+  },
+  {
+    id: 'unterarmdehnung', name: 'Unterarm dehnen', icon: '🤲', cat: 'mobil', pos: 'stehend', perSide: true, special: 'darts',
+    unit: 'sek', base: [20, 20, 30, 30, 30, 30, 30, 30],
+    steps: ['Arm gestreckt nach vorne, Handfläche zeigt nach vorne.', 'Mit der anderen Hand die Finger sanft zu dir ziehen (Unterseite dehnen).', 'Dann Handrücken nach vorne und die Hand sanft nach unten ziehen (Oberseite).'],
+    tip: 'Nach langen Abenden am Board das Wichtigste gegen verspannte Unterarme.',
+    easier: 'Ellbogen leicht gebeugt.', harder: 'Länger halten, tief ausatmen.',
+  },
+  {
+    id: 'kinnzurueck', name: 'Kinn zurückschieben', icon: '🐢', cat: 'mobil', pos: 'sitzend', special: 'darts',
+    unit: 'wdh', base: [8, 10, 10, 12, 12, 12, 15, 15],
+    steps: ['Aufrecht sitzen, Blick geradeaus.', 'Kinn waagerecht nach hinten schieben („Doppelkinn“), 3 Sekunden halten.', 'Locker lassen.'],
+    tip: 'Gegen den vorgeschobenen Kopf beim Zielen – entlastet den Nacken.',
+    easier: 'Mit dem Hinterkopf an der Wand.', harder: 'Mit leichtem Gegendruck der Finger am Kinn.',
+  },
+  {
+    id: 'zielatmung', name: 'Ziel-Atmung', icon: '🎯', cat: 'entspannung', pos: 'stehend', special: 'darts',
+    unit: 'sek', base: [60, 60, 60, 60, 90, 90, 90, 90], cue: [['Einatmen', 4], ['Ausatmen', 6]],
+    steps: ['Locker im Wurfstand stehen, Schultern sinken lassen.', '4 Sekunden durch die Nase einatmen, 6 Sekunden lang ausatmen.', 'Beim Ausatmen den Blick ruhig auf ein Ziel richten.'],
+    tip: 'Langes Ausatmen senkt den Puls – genau diese Ruhe willst du vor dem Wurf.',
+    easier: 'Im Sitzen.', harder: 'Am Ende jeder Ausatmung den Wurfarm in Zielposition bringen.',
+  },
+  {
+    id: 'wurfstand', name: 'Wurfstand halten', icon: '🎯', cat: 'balance', pos: 'stehend', special: 'darts',
+    unit: 'sek', base: [20, 20, 30, 30, 40, 45, 45, 60],
+    steps: ['In deinen Wurfstand gehen, Gewicht auf dem vorderen Bein.', 'Wurfarm in Zielposition, ruhig halten – Körper ganz still.', 'Schwerer: dabei die Augen kurz schließen.'],
+    tip: 'Ein stiller Körper ist die Basis für gleiche Würfe. Spür, wo du schwankst.',
+    easier: 'Hinteren Fuß stärker belasten.', harder: 'Auf dem vorderen Bein allein oder auf einem Kissen.',
+  },
 ];
 
 export const byId = Object.fromEntries(EXERCISES.map((e) => [e.id, e]));
@@ -615,5 +687,6 @@ export const fitsGear = (e, { equip = [], noJumps = false } = {}) => (!e.equip |
 
 /** Übungen, die für ein Level (und die Ausstattung) verfügbar sind. */
 export function forLevel(level, cat, gear) {
-  return EXERCISES.filter((e) => !e.programOnly && e.base[level - 1] != null && (!cat || e.cat === cat) && fitsGear(e, gear));
+  // Sonder-Übungen (z. B. Darts) nur in ihrer Welt – nicht in Challenges, Tausch und allgemeinen Schwerpunkten
+  return EXERCISES.filter((e) => !e.programOnly && !e.special && e.base[level - 1] != null && (!cat || e.cat === cat) && fitsGear(e, gear));
 }
