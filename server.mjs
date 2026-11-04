@@ -16,6 +16,7 @@ const types = {
 
 // Lokale Nachbildung der Cloudflare-Funktion /api/sync/:id mit Arbeitsspeicher statt KV
 const { onRequest: syncHandler } = await import(pathToFileURL(join(root, 'functions', 'api', 'sync', '[id].js')).href);
+const { onRequest: pushHandler } = await import(pathToFileURL(join(root, 'functions', 'api', 'push.js')).href);
 const kvMap = new Map();
 const KV = {
   async get(k, t) { const v = kvMap.get(k); return v == null ? null : t === 'json' ? JSON.parse(v) : v; },
@@ -26,6 +27,13 @@ const readBody = (req) => new Promise((ok) => { const c = []; req.on('data', (d)
 
 createServer(async (req, res) => {
   let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  if (path === '/api/push') {
+    const body = req.method === 'POST' ? await readBody(req) : undefined;
+    const r = await pushHandler({ request: new Request(`http://x${req.url}`, { method: req.method, body }), env: { AUFWIND_SYNC: KV } });
+    res.writeHead(r.status, Object.fromEntries(r.headers));
+    res.end(await r.text());
+    return;
+  }
   if (path.startsWith('/api/sync/')) {
     const body = ['PUT', 'POST'].includes(req.method) ? await readBody(req) : undefined;
     const r = await syncHandler({ request: new Request(`http://x${req.url}`, { method: req.method, body }), env: { AUFWIND_SYNC: KV }, params: { id: path.split('/')[3] } });

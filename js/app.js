@@ -21,9 +21,9 @@ import { confetti, haptic } from './confetti.js';
 import { startSync, syncNow, syncCode, syncStatus, onSyncStatus, setupSync, joinSync, leaveSync, syncLink, qrSVG } from './sync.js';
 import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
-import { startReminders, enableNotifications, notifySupported } from './reminders.js';
+import { startReminders, enableNotifications, notifySupported, pushSupport, pushActive, enablePush, disablePush, syncPush, reportDone } from './reminders.js';
 
-const VERSION = '0.10.0';
+const VERSION = '0.11.0';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung', custom: 'Training nach Wunsch' };
 const view = $('#view');
 const tabbar = $('#tabbar');
@@ -803,6 +803,7 @@ function finishUpdate(p) {
   const fresh = awardBadges(p);
   store.save();
   updateGoButton();
+  reportDone(p);
   fresh.forEach((b, k) => setTimeout(() => toast(`${b.icon} Abzeichen: ${b.name}!`, 3500), 2400 + k * 3600));
 }
 
@@ -1271,7 +1272,8 @@ function renderProfile(p) {
           <label class="field"><span>🌅 Morgens</span><input type="time" id="r-m" value="${p.reminders.morning}"></label>
           <label class="field"><span>🌙 Abends</span><input type="time" id="r-e" value="${p.reminders.evening}"></label>
         </div>
-        <label class="check"><input type="checkbox" id="notify" ${s.settings.notify && notifyState === 'granted' ? 'checked' : ''} ${notifyState === 'unsupported' || notifyState === 'denied' ? 'disabled' : ''}>
+        ${pushHTML()}
+        <label class="check" ${pushActive() || pushSupport() === 'ok' ? 'hidden' : ''}><input type="checkbox" id="notify" ${s.settings.notify && notifyState === 'granted' ? 'checked' : ''} ${notifyState === 'unsupported' || notifyState === 'denied' ? 'disabled' : ''}>
           <span>Benachrichtigung zur Erinnerungszeit<br><span class="small muted">${notifyState === 'denied' ? 'Benachrichtigungen sind im Browser blockiert – bitte dort erlauben.' : notifyState === 'unsupported' ? 'Dieser Browser unterstützt keine Benachrichtigungen.' : 'Funktioniert, solange Aufwind geöffnet ist (auch im Hintergrund). Für zuverlässige Erinnerungen zusätzlich den Kalender nutzen.'}</span></span></label>
         <button class="btn soft" id="ics">Kalender-Erinnerung herunterladen (.ics)</button>
       </section>
@@ -1339,7 +1341,18 @@ function renderProfile(p) {
     $(`[data-equip="${k}"]`)?.focus();
   }));
   $('#no-jumps').addEventListener('change', (e) => { p.noJumps = e.target.checked; store.save(); toast(e.target.checked ? 'Sprünge werden weggelassen' : 'Sprünge sind wieder dabei'); });
-  const saveRem = () => { p.reminders = { morning: $('#r-m').value || '07:30', evening: $('#r-e').value || '19:00' }; store.save(); };
+  const saveRem = () => { p.reminders = { morning: $('#r-m').value || '07:30', evening: $('#r-e').value || '19:00' }; store.save(); syncPush(); };
+  $('#push')?.addEventListener('change', async (e) => {
+    e.target.disabled = true;
+    if (e.target.checked) {
+      const ok = await enablePush().catch(() => false);
+      toast(ok ? '🔔 Erinnerungen kommen jetzt auch bei geschlossener App' : 'Push-Erinnerungen ließen sich nicht einschalten – Benachrichtigungen erlaubt?', 3500);
+    } else {
+      await disablePush();
+      toast('Push-Erinnerungen ausgeschaltet');
+    }
+    renderProfile(p);
+  });
   $('#r-m').addEventListener('change', saveRem);
   $('#r-e').addEventListener('change', saveRem);
   $('#notify').addEventListener('change', async (e) => {
@@ -1377,6 +1390,21 @@ function renderProfile(p) {
   $('#delete').addEventListener('click', () => {
     if (prompt(`Zum Löschen bitte „${p.name}“ eintippen:`) === p.name) { store.deleteProfile(p.id); location.hash = '#/heute'; route(); }
   });
+}
+
+/** Schalter für Push-Erinnerungen (nur wenn der Server eingerichtet ist). */
+function pushHTML() {
+  const sup = pushSupport();
+  if (sup === 'unconfigured') return '';
+  const on = pushActive();
+  const hint = {
+    ok: 'Kommt auch, wenn Aufwind geschlossen ist – für alle Profile auf diesem Gerät. Ist die Challenge schon erledigt, bleibt es still.',
+    denied: 'Benachrichtigungen sind für Aufwind blockiert – bitte in den Browser- bzw. Handy-Einstellungen erlauben.',
+    'ios-install': 'Auf dem iPhone: erst über „Teilen → Zum Home-Bildschirm“ installieren und Aufwind von dort öffnen.',
+    unsupported: 'Dieser Browser unterstützt keine Push-Benachrichtigungen.',
+  }[sup];
+  return `<label class="check"><input type="checkbox" id="push" ${on ? 'checked' : ''} ${sup !== 'ok' && !on ? 'disabled' : ''}>
+    <span>Push-Erinnerung zur Erinnerungszeit<br><span class="small muted">${hint}</span></span></label>`;
 }
 
 /** Einstufung erneut durchlaufen, ohne Daten zu verlieren. */
@@ -1531,4 +1559,5 @@ applyFontSize();
 systemDark.addEventListener('change', () => { if (store.getState().settings.theme === 'auto') applyFontSize(); });
 route();
 startReminders();
+syncPush();
 startSync(onRemoteChange);

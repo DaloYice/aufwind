@@ -1,5 +1,5 @@
 // Service Worker: Network-First für App-Dateien (immer aktuell), Cache als Offline-Fallback.
-const CACHE = 'aufwind-v11';
+const CACHE = 'aufwind-v12';
 const ASSETS = [
   './', './index.html', './css/app.css', './manifest.webmanifest', './icons/icon.svg',
   './js/app.js', './js/store.js', './js/player.js', './js/ui.js', './js/chart.js',
@@ -8,7 +8,7 @@ const ASSETS = [
   './js/core/week.js', './js/figure.js', './js/dashboard.js', './js/reminders.js',
   './icons/icon-192.png', './icons/icon-512.png', './js/confetti.js',
   './fonts/nunito-latin.woff2', './fonts/nunito-latin-ext.woff2',
-  './js/sync.js', './js/core/syncdata.js', './vendor/qrcode.js', './js/core/records.js', './js/icons.js', './js/core/checkin.js', './js/core/custom.js', './js/core/exlog.js', './js/data/focus.js', './js/data/worlds.js',
+  './js/sync.js', './js/core/syncdata.js', './vendor/qrcode.js', './js/core/records.js', './js/icons.js', './js/core/checkin.js', './js/core/custom.js', './js/core/exlog.js', './js/data/focus.js', './js/data/worlds.js', './js/push-config.js',
 ];
 
 self.addEventListener('install', (e) => {
@@ -38,13 +38,27 @@ self.addEventListener('fetch', (e) => {
   );
 });
 
-// Klick auf eine Erinnerung öffnet bzw. fokussiert die App.
+// Push-Erinnerung vom Server (push/worker.js) anzeigen
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { /* leer oder kein JSON */ }
+  e.waitUntil(self.registration.showNotification(d.title || 'Aufwind', {
+    body: d.body || 'Zeit für deine Challenge.',
+    icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: d.tag || 'aufwind', renotify: true,
+    data: { url: d.url || './#/heute' },
+    actions: [{ action: 'start', title: 'Jetzt starten' }],
+  }));
+});
+
+// Klick auf eine Erinnerung öffnet bzw. fokussiert die App („Jetzt starten“ startet direkt das Fällige).
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
+  const target = e.action === 'start' ? './#/start' : (e.notification.data?.url || './#/heute');
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       const win = list.find((c) => c.url.startsWith(self.registration.scope));
-      return win ? win.focus() : self.clients.openWindow('./#/heute');
+      if (!win) return self.clients.openWindow(target);
+      return win.focus().then((w) => (w && 'navigate' in w ? w.navigate(new URL(target, self.registration.scope).href) : w));
     }),
   );
 });

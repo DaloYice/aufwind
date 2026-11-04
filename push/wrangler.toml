@@ -1,0 +1,18 @@
+# Cloudflare-Worker für Aufwind-Erinnerungen (Web Push). Läuft im Cloudflare-Konto des Aufwind-Pages-Projekts.
+# Einrichtung: siehe push/README.md
+name = "aufwind-push"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Derselbe KV-Speicher wie die Pages-Bindung AUFWIND_SYNC (ID: npx wrangler kv namespace list)
+[[kv_namespaces]]
+binding = "AUFWIND_SYNC"
+id = "KV_NAMESPACE_ID_EINTRAGEN"
+
+[vars]
+# Öffentlicher VAPID-Schlüssel (wird von push/setup-vapid.mjs eingetragen; der private liegt nur als Secret im Worker)
+VAPID_PUBLIC = "VAPID_PUBLIC_EINTRAGEN"
+VAPID_SUBJECT = "https://aufwind-4er.pages.dev"
