@@ -103,7 +103,7 @@ try {
   await click('#next');
   await fill('#f-age', '45'); await fill('#f-height', '170'); await fill('#f-weight', '145');
   await click('#next');
-  for (let q = 0; q < 5; q++) { await click('[data-opt="0"]'); await sleep(60); }
+  for (let q = 0; q < 7; q++) { await click('[data-opt="0"]'); await sleep(60); }
   await click('#next'); // Gesundheits-Check
   await click('[data-why]'); await fill('#f-why', 'Mit meinen Enkeln toben');
   await shot('01-warum');

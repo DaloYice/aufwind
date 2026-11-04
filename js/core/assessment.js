@@ -1,13 +1,19 @@
-// Einstufungstest → Startlevel 1–5.
-// Bewusst vorsichtig: Im Zweifel niedriger einsteigen; über Feedback geht es schnell nach oben.
+// Einstufungstest → Startlevel 1–8.
+// Unten bewusst vorsichtig (im Zweifel niedriger einsteigen), oben offen: Wer schon trainiert, landet ab v0.8.0 auf 6–8.
 
 export const LEVELS = [
-  { n: 1, name: 'Sanfter Start', desc: 'Übungen überwiegend im Sitzen, 2–6 Minuten pro Einheit.', color: '#7cb87e' },
-  { n: 2, name: 'Aufstehen', desc: 'Sitzen und Stehen mit Stütze, kurze Spaziergänge, 5–10 Minuten.', color: '#5aa6a6' },
-  { n: 3, name: 'In Bewegung', desc: 'Frei stehend, gelenkschonend, 10–15 Minuten.', color: '#5b8bd9' },
-  { n: 4, name: 'Aktiv', desc: 'Kraft und Ausdauer mit dem eigenen Körpergewicht, 15–25 Minuten.', color: '#9a6bd6' },
-  { n: 5, name: 'Fit', desc: 'Volle Einheiten mit mehreren Runden, 20–30 Minuten.', color: '#d9675b' },
+  { n: 1, name: 'Basis', desc: 'Kraft und Beweglichkeit im Sitzen – das Fundament. 5–8 Minuten.', color: '#7cb87e' },
+  { n: 2, name: 'Aufbau', desc: 'Sitzen und Stehen mit Stütze, erste Gehrunden. 8–12 Minuten.', color: '#5aa6a6' },
+  { n: 3, name: 'Bewegung', desc: 'Frei stehend, gelenkschonend, zwei Runden. 12–18 Minuten.', color: '#5b8bd9' },
+  { n: 4, name: 'Aktiv', desc: 'Körpergewicht-Kraft auch am Boden, mehr Tempo. 15–25 Minuten.', color: '#9a6bd6' },
+  { n: 5, name: 'Sportlich', desc: 'Drei Runden, kurze Pausen, erste Intervalle. 20–30 Minuten.', color: '#d9675b' },
+  { n: 6, name: 'Athletisch', desc: 'Sprünge, Plyometrie und HIIT, harte Liegestütz-Varianten. 25–35 Minuten.', color: '#e0803a' },
+  { n: 7, name: 'Leistung', desc: 'Vier Runden, einbeinige Kraft, explosive Sprünge, kurze Pausen. 30–40 Minuten.', color: '#c9452f' },
+  { n: 8, name: 'Elite', desc: 'Maximales Volumen und Tempo – für Leute, die schon richtig trainieren. 35–45 Minuten.', color: '#2b2b33' },
 ];
+
+/** Ab diesem Level kommen Sprungübungen dazu. */
+export const JUMP_LEVEL = 6;
 
 export const QUESTIONS = [
   {
@@ -29,6 +35,14 @@ export const QUESTIONS = [
   {
     id: 'activeDays', text: 'An wie vielen Tagen pro Woche bewegst du dich aktuell mindestens 20 Minuten bewusst?',
     options: ['0 Tage', '1–2 Tage', '3–4 Tage', '5 oder mehr Tage'],
+  },
+  {
+    id: 'pushups', text: 'Wie viele saubere Liegestütze am Boden schaffst du am Stück?',
+    options: ['Keinen', '1–5', '6–15', '16–30', 'Mehr als 30'],
+  },
+  {
+    id: 'run', text: 'Wie lange kannst du am Stück locker joggen?',
+    options: ['Gar nicht', 'Bis 10 Minuten', '10–30 Minuten', 'Mehr als 30 Minuten'],
   },
 ];
 
@@ -59,8 +73,9 @@ export function bmiClass(value) {
 }
 
 /**
- * @param {{walk:number, chairStand:number, stairs:number, joints:number, activeDays:number,
+ * @param {{walk:number, chairStand:number, stairs:number, joints:number, activeDays:number, pushups?:number, run?:number,
  *          age?:number, heightCm?:number, weightKg?:number, flags?:string[]}} a
+ * Ergebnis `max`: höchstes Level, das die Angaben erlauben (Aufstiegs-Vorschläge gehen nicht darüber).
  */
 export function assess(a) {
   const score =
@@ -71,10 +86,16 @@ export function assess(a) {
     a.activeDays * 1.5; // 0–4.5
 
   let level = score < 5 ? 1 : score < 10 ? 2 : score < 15 ? 3 : score < 20 ? 4 : 5;
+  // Oben offen: Wer im Alltag alles mühelos schafft, wird über Liegestütze und Laufen weiter eingestuft.
+  const fit = (a.pushups ?? 0) * 1.5 + (a.run ?? 0) * 2; // 0–12
+  const athlete = level === 5 || score >= 18;
+  if (athlete && fit >= 5) level = fit >= 11 ? 8 : fit >= 8 ? 7 : 6;
   const reasons = [];
-  const cap = (max, why) => {
-    if (level > max) {
-      level = max;
+  let max = LEVELS.length;
+  const cap = (limit, why) => {
+    max = Math.min(max, limit);
+    if (level > limit) {
+      level = limit;
       reasons.push(why);
     }
   };
@@ -82,14 +103,16 @@ export function assess(a) {
   const b = bmi(a.heightCm, a.weightKg);
   if (b != null && b >= 40) cap(2, 'Bei einem BMI über 40 starten wir besonders gelenkschonend.');
   else if (b != null && b >= 35) cap(3, 'Bei einem BMI über 35 schonen wir anfangs die Gelenke.');
+  else if (b != null && b >= 30) cap(JUMP_LEVEL - 1, 'Bei einem BMI über 30 lassen wir Sprünge vorerst weg – sie belasten die Gelenke stark.');
   if (a.walk === 0 && a.chairStand === 0) cap(1, 'Wir stärken zuerst die Beine im Sitzen.');
   if (a.chairStand === 0) cap(2, 'Das Aufstehen vom Stuhl trainieren wir gezielt mit.');
   if (a.joints === 2) cap(3, 'Wegen häufiger Gelenkschmerzen verzichten wir anfangs auf belastende Übungen.');
+  else if (a.joints === 1) cap(JUMP_LEVEL, 'Wegen gelegentlicher Gelenkschmerzen ohne die härtesten Sprungübungen.');
   if (a.age >= 70) cap(3, 'Ab 70 lieber behutsam steigern.');
 
   const flags = a.flags || [];
   const doctorHint = flags.length > 0;
   if (doctorHint) cap(3, 'Wegen deiner Gesundheitsangaben starten wir vorsichtig.');
 
-  return { level, score: Math.round(score * 10) / 10, bmi: b, bmiClass: bmiClass(b), doctorHint, reasons };
+  return { level, max, score: Math.round(score * 10) / 10, bmi: b, bmiClass: bmiClass(b), doctorHint, reasons };
 }

@@ -52,14 +52,17 @@ export function adjustIntensity(current, feedback) {
   return Math.round(Math.min(1.5, Math.max(0.6, current + delta)) * 100) / 100;
 }
 
-/** 'up' | 'down' | null */
+export const MAX_LEVEL = 8;
+
+/** 'up' | 'down' | null. Nach oben nie über das, was die Einstufung erlaubt (assessment.max, z. B. Sprünge erst ohne BMI-/Gelenk-Deckel). */
 export function levelSuggestion(profile) {
   const since = profile.levelSince || '';
   const recent = profile.sessions.filter((s) => s.date >= since);
   const last5 = recent.slice(-5);
   const easy = last5.filter((s) => s.feedback === 'leicht').length;
   const hard = last5.filter((s) => s.feedback === 'schwer').length;
-  if (profile.level < 5 && recent.length >= 8 && (profile.intensity >= 1.3 || easy >= 3)) return 'up';
+  const max = Math.min(MAX_LEVEL, profile.assessment?.max ?? MAX_LEVEL);
+  if (profile.level < max && recent.length >= 8 && (profile.intensity >= 1.3 || easy >= 3)) return 'up';
   if (profile.level > 1 && recent.length >= 3 && profile.intensity <= 0.7 && hard >= 2) return 'down';
   return null;
 }

@@ -43,7 +43,7 @@ test('Einstufung: mittlere Werte → Level 2–3', () => {
 
 test('Übungsdaten vollständig', () => {
   for (const e of EXERCISES) {
-    assert.equal(e.base.length, 5, e.id);
+    assert.equal(e.base.length, 8, e.id);
     assert.ok(e.steps.length >= 2, e.id);
     assert.ok(e.easier && e.harder && e.tip, e.id);
   }

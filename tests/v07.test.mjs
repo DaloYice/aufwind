@@ -17,7 +17,7 @@ test('Welten verweisen auf vorhandene Schwerpunkte und Icons, Texte vollständig
     assert.ok(w.intro && w.safety && w.points.length >= 2 && w.tips.length >= 2, id);
   }
   for (const f of Object.values(FOCUS)) assert.ok(ICON[f.icon], f.label);
-  assert.deepEqual(Object.values(DIFFICULTY).map((d) => d.level), [1, 3, 5]);
+  assert.deepEqual(Object.values(DIFFICULTY).map((d) => d.level), [1, 3, 5, 7]);
 });
 
 test('Takt-Ansagen sind gültig und nur bei Zeitübungen', () => {

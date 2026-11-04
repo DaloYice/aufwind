@@ -1,5 +1,6 @@
 // Tägliche Challenges: pro Tag und Profil stabil (deterministischer Zufall).
-import { byId, forLevel } from '../data/exercises.js';
+import { byId, forLevel, gearOf } from '../data/exercises.js';
+import { intervalFor } from '../data/focus.js';
 import { HABITS, TIPS } from '../data/habits.js';
 import { checkinOf, avoids, energyFactor, adaptText } from './checkin.js';
 
@@ -30,9 +31,9 @@ function pick(list, rand, exclude = new Set()) {
   return e;
 }
 
-export const REST = [30, 25, 20, 15, 15];
-export const MORNING_EXCLUDE = ['gehen', 'treppe', 'pmr', 'dankbarkeit'];
-const ROUNDS = [1, 1, 2, 2, 3];
+export const REST = [30, 25, 20, 15, 15, 15, 12, 10];
+export const MORNING_EXCLUDE = ['gehen', 'treppe', 'pmr', 'dankbarkeit', 'joggen', 'burpee', 'hocksprung'];
+const ROUNDS = [1, 1, 2, 2, 3, 3, 4, 4];
 
 // Abend-Themen rotieren, damit nicht jeder Tag gleich ist.
 export const EVENING_THEMES = [
@@ -40,7 +41,12 @@ export const EVENING_THEMES = [
   { id: 'spaziergang', title: 'Spazier-Abend', icon: '🚶', plan: ['gehen', 'balance'] },
   { id: 'balance', title: 'Balance & Dehnen', icon: '⚖️', plan: ['balance', 'mobil', 'kraft', 'balance'] },
   { id: 'cardio', title: 'Herz-Kreislauf', icon: '❤️', plan: ['ausdauer', 'kraft', 'ausdauer', 'ausdauer'] },
+  // Ab Level 6: Intervall-Abend (HIIT) – jede Übung auf Zeit, kurze feste Pausen
+  { id: 'intervall', title: 'Intervall-Abend', icon: '⚡', plan: ['ausdauer', 'kraft', 'ausdauer', 'kraft', 'ausdauer'], minLevel: 6, interval: true },
 ];
+
+/** Abend-Themen für ein Level (ab Level 6 heißt der Spazier-Abend Lauf-Abend). */
+export const themesFor = (level) => EVENING_THEMES.filter((t) => !t.minLevel || level >= t.minLevel);
 
 /** Menge für Übung, Level und Intensitätsfaktor (gerundet, Zeit in 5-Sek-Schritten). */
 export function amountFor(ex, level, intensity = 1) {
@@ -49,10 +55,10 @@ export function amountFor(ex, level, intensity = 1) {
   return ex.unit === 'sek' ? Math.max(10, Math.round(raw / 5) * 5) : Math.max(2, Math.round(raw));
 }
 
-/** Geschätzte Dauer einer Übung in Sekunden (Wdh ≈ 3 s). */
+/** Geschätzte Dauer einer Übung in Sekunden (Wdh ≈ 3 s). item.unit überschreibt die Einheit (Intervalle: Zeit statt Wdh.). */
 export function exerciseSeconds(item) {
   const ex = byId[item.id];
-  const t = ex.unit === 'sek' ? item.amount : item.amount * 3;
+  const t = (item.unit || ex.unit) === 'sek' ? item.amount : item.amount * 3;
   return ex.perSide ? t * 2 : t;
 }
 
@@ -75,30 +81,55 @@ export function morningChallenge(dateKey, profile) {
   const { level, intensity = 1, id = 'p' } = profile;
   const rand = rng(hashString(`${dateKey}|${id}|morning`));
   const used = new Set(MORNING_EXCLUDE);
-  // Morgens keine Bodenübungen – schnell und ohne Matte machbar.
-  const pool = (cat) => forLevel(level, cat).filter((e) => e.pos !== 'boden');
+  // Morgens keine Boden- und Stangen-Übungen – schnell und ohne Matte machbar.
+  const pool = (cat) => forLevel(level, cat, gearOf(profile)).filter((e) => e.pos !== 'boden' && e.pos !== 'haengend');
   const ids = [pick(pool('mobil'), rand, used).id];
-  const extra = level <= 1 ? 2 : level <= 3 ? 3 : 4;
+  const extra = level <= 1 ? 2 : level <= 3 ? 3 : level <= 5 ? 4 : 5;
   const cats = ['ausdauer', 'kraft', 'mobil', 'kraft', 'balance'];
   for (let i = 0; i < extra; i++) ids.push(pick(pool(cats[i]), rand, used).id);
-  const steps = buildSteps(ids, level, intensity, 1);
-  return summarize('morning', 'Morgen-Aktivierung', '🌅', steps, REST[level - 1], 1);
+  // Ab Level 6 zwei Runden – ein echtes Morgen-Workout statt Aufwachen
+  const rounds = level >= 6 ? 2 : 1;
+  const steps = buildSteps(ids, level, intensity, rounds);
+  return summarize('morning', level >= 6 ? 'Morgen-Workout' : 'Morgen-Aktivierung', '🌅', steps, REST[level - 1], rounds);
 }
 
 /** Abend-Challenge: Thema des Tages, endet immer mit Entspannung. */
 export function eveningChallenge(dateKey, profile) {
   const { level, intensity = 1, id = 'p' } = profile;
   const rand = rng(hashString(`${dateKey}|${id}|evening`));
-  const theme = EVENING_THEMES[Math.floor(rand() * EVENING_THEMES.length)];
-  const used = new Set(['dankbarkeit']);
+  // Bis Level 5 bleibt die Auswahl wie bisher (gleiche Themen an gleichen Tagen)
+  const themes = themesFor(level);
+  const theme = themes[Math.floor(rand() * themes.length)];
+  const gear = gearOf(profile);
+  // Gehen/Laufen nur im Spazier-/Lauf-Abend – nicht als Runde im Herz-Kreislauf-Abend
+  const used = new Set(['dankbarkeit', 'gehen', 'joggen']);
+  const walkId = level >= 6 ? 'joggen' : 'gehen';
   let plan = theme.plan;
   if (level <= 2) plan = plan.slice(0, 3);
-  const ids = plan.map((c) => (c === 'gehen' ? (used.add('gehen'), 'gehen') : pick(forLevel(level, c), rand, used).id));
-  const rounds = theme.id === 'spaziergang' ? 1 : ROUNDS[level - 1];
-  const steps = buildSteps(ids, level, intensity, rounds);
-  const relax = rand() < 0.5 ? 'bauchatmung' : 'pmr';
-  steps.push({ id: relax, amount: amountFor(byId[relax], level, 1), round: rounds });
-  return summarize('evening', theme.title, theme.icon, steps, REST[level - 1], rounds);
+  if (level >= 6 && !theme.interval && theme.id !== 'spaziergang') plan = [...plan, plan[0]];
+  const ids = plan.map((c) => (c === 'gehen' ? walkId : pick(forLevel(level, c, gear), rand, used).id));
+  const title = theme.id === 'spaziergang' && level >= 6 ? 'Lauf-Abend' : theme.title;
+  let steps, rounds, rest;
+  if (theme.interval) {
+    const [work, pause] = intervalFor(level);
+    rounds = ROUNDS[level - 1] - 1;
+    steps = [];
+    for (let r = 1; r <= rounds; r++) {
+      for (const x of ids) steps.push({ id: x, amount: byId[x].perSide ? Math.round(work / 10) * 5 : work, unit: 'sek', round: r });
+    }
+    rest = pause;
+  } else {
+    rounds = theme.id === 'spaziergang' ? 1 : ROUNDS[level - 1];
+    steps = buildSteps(ids, level, intensity, rounds);
+    rest = REST[level - 1];
+  }
+  // Abschluss: bis Level 5 Entspannung, danach Dehnen (Cool-down)
+  const cool = level >= 6
+    ? pick(forLevel(level, 'mobil', gear).filter((e) => e.pos !== 'boden' && e.id !== 'armschwung'), rand, used).id
+    : rand() < 0.5 ? 'bauchatmung' : 'pmr';
+  steps.push({ id: cool, amount: amountFor(byId[cool], level, 1), round: rounds });
+  const c = summarize('evening', title, theme.icon, steps, rest, rounds);
+  return theme.interval ? { ...c, interval: true, fixedRest: true } : c;
 }
 
 export function habitOfDay(dateKey, profile) {
@@ -141,21 +172,26 @@ function adaptToCheckin(c, slot, dateKey, profile, ci) {
   const map = {};
   for (const id of bad) {
     const ex = byId[id];
-    const opts = forLevel(profile.level, ex.cat).filter((e) => !avoids(ci, e.id) && !inUse.has(e.id) && !excluded.includes(e.id) && (slot !== 'morning' || e.pos !== 'boden'));
+    const opts = forLevel(profile.level, ex.cat, gearOf(profile)).filter((e) => !avoids(ci, e.id) && !inUse.has(e.id) && !excluded.includes(e.id) && (slot !== 'morning' || (e.pos !== 'boden' && e.pos !== 'haengend')));
     if (opts.length) {
       const to = opts[Math.floor(rand() * opts.length)];
       map[id] = to.id;
       inUse.add(to.id);
     } else map[id] = null;
   }
-  let steps = c.steps.filter((s) => map[s.id] !== null).map((s) => {
-    const to = map[s.id];
-    if (!to) return s;
-    const ex = byId[to];
-    return { ...s, id: to, amount: amountFor(ex, profile.level, ex.cat === 'entspannung' ? 1 : profile.intensity ?? 1) };
-  });
+  let steps = c.steps.filter((s) => map[s.id] !== null).map((s) => (map[s.id] ? retarget(s, map[s.id], profile) : s));
   if (!steps.length) steps = [{ id: 'bauchatmung', amount: amountFor(byId.bauchatmung, profile.level, 1), round: 1 }];
-  return summarize(c.slot, c.title, c.icon, steps, c.rest, c.rounds);
+  return { ...c, ...summarize(c.slot, c.title, c.icon, steps, c.rest, c.rounds) };
+}
+
+/** Schritt auf eine andere Übung umstellen. Intervall-Schritte behalten ihre Belastungszeit. */
+function retarget(s, to, profile) {
+  const ex = byId[to];
+  if (s.unit) {
+    const total = byId[s.id].perSide ? s.amount * 2 : s.amount;
+    return { ...s, id: to, amount: ex.perSide ? Math.max(10, Math.round(total / 10) * 5) : total };
+  }
+  return { ...s, id: to, amount: amountFor(ex, profile.level, ex.cat === 'entspannung' ? 1 : profile.intensity ?? 1) };
 }
 
 // ---------- Übung tauschen ----------
@@ -163,13 +199,8 @@ function adaptToCheckin(c, slot, dateKey, profile, ci) {
 
 function applySwaps(c, map, profile) {
   if (!map || !Object.keys(map).length) return c;
-  const steps = c.steps.map((s) => {
-    const to = map[s.id];
-    if (!to || !byId[to]) return s;
-    const ex = byId[to];
-    return { ...s, id: to, amount: amountFor(ex, profile.level, ex.cat === 'entspannung' ? 1 : profile.intensity ?? 1) };
-  });
-  return summarize(c.slot, c.title, c.icon, steps, c.rest, c.rounds);
+  const steps = c.steps.map((s) => (map[s.id] && byId[map[s.id]] ? retarget(s, map[s.id], profile) : s));
+  return { ...c, ...summarize(c.slot, c.title, c.icon, steps, c.rest, c.rounds) };
 }
 
 /** Mögliche Ersatzübungen: gleicher Bereich, im Level, nicht schon in der Einheit, morgens ohne Boden. */
@@ -179,7 +210,7 @@ export function swapOptions(slot, dateKey, profile, currentId) {
   const inUse = new Set(c.steps.map((s) => s.id));
   const excluded = slot === 'morning' ? MORNING_EXCLUDE : ['dankbarkeit'];
   const ci = checkinOf(profile, dateKey);
-  return forLevel(profile.level, ex.cat).filter((e) => !excluded.includes(e.id) && (slot !== 'morning' || e.pos !== 'boden') && !avoids(ci, e.id)
+  return forLevel(profile.level, ex.cat, gearOf(profile)).filter((e) => !excluded.includes(e.id) && (slot !== 'morning' || (e.pos !== 'boden' && e.pos !== 'haengend')) && !avoids(ci, e.id)
     && (e.id === currentId || !inUse.has(e.id)));
 }
 

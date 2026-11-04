@@ -9,12 +9,12 @@ import { ICON, icoTile } from './icons.js';
 import { customWorkout } from './core/custom.js';
 import { recordExercises, exStats } from './core/exlog.js';
 import { checkinOf } from './core/checkin.js';
-import { FOCUS, QUICK_MINUTES, PAIN_LABELS } from './data/focus.js';
+import { FOCUS, QUICK_MINUTES, PAIN_LABELS, focusAvailable } from './data/focus.js';
 import { WORLDS, DIFFICULTY } from './data/worlds.js';
 import { addSession, updateSession, removeSession, restoreSession } from './core/records.js';
 import { streak, adjustIntensity, levelSuggestion, awardBadges, BADGES } from './core/progress.js';
 import { weekStart, weekStats, weekGoal, reviewDue, suggestGoal, reviewMessage, familyProgress, defaultFamilyGoal } from './core/week.js';
-import { EXERCISES, CATEGORIES, POSITIONS, byId } from './data/exercises.js';
+import { EXERCISES, CATEGORIES, POSITIONS, EQUIPMENT, byId, fitsGear, gearOf } from './data/exercises.js';
 import { PROGRAMS, programById, programState, programSession } from './data/programs.js';
 import { mountFigure, hasFigure, renderStatic } from './figure.js';
 import { confetti, haptic } from './confetti.js';
@@ -23,12 +23,12 @@ import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported } from './reminders.js';
 
-const VERSION = '0.7.0';
+const VERSION = '0.8.0';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung', custom: 'Training nach Wunsch' };
 const view = $('#view');
 const tabbar = $('#tabbar');
 const EMOJIS = ['🙂', '😎', '🦊', '🐻', '🐢', '🦁', '🐱', '🌻', '⭐', '🚀', '🌈', '💪'];
-const WHY = ['Mehr Energie im Alltag', 'Treppen ohne Pause schaffen', 'Mit Kindern oder Enkeln toben', 'Weniger Schmerzen', 'Gesündere Blutwerte', 'Mich wohler in meinem Körper fühlen', 'Abnehmen', 'Länger fit und selbstständig bleiben'];
+const WHY = ['Stärker und athletischer werden', 'Ausdauer für Laufen und Sport', 'Mehr Energie im Alltag', 'Treppen ohne Pause schaffen', 'Mit Kindern oder Enkeln toben', 'Weniger Schmerzen', 'Gesündere Blutwerte', 'Mich wohler in meinem Körper fühlen', 'Abnehmen', 'Länger fit und selbstständig bleiben'];
 const ANCHORS = {
   morning: ['Nach dem Aufstehen', 'Nach dem Zähneputzen', 'Nach dem ersten Kaffee oder Tee', 'Nach dem Frühstück', 'Bevor ich aus dem Haus gehe'],
   evening: ['Nach dem Abendessen', 'Wenn ich von der Arbeit komme', 'Vor den Nachrichten oder meiner Serie', 'Vor dem Zähneputzen am Abend', 'Wenn die Kinder im Bett sind'],
@@ -124,11 +124,11 @@ function renderOnboarding() {
         <h1 class="center">${isFirst ? 'Willkommen bei Aufwind' : 'Neues Profil'}</h1>
         <p>Aufwind holt dich genau da ab, wo du gerade stehst – egal, ob du gerade erst anfängst oder schon trainierst.</p>
         <div class="card stack">
-          <div class="row"><span style="font-size:1.6rem">🌅</span><span><b>Morgens</b> eine kurze Aktivierung</span></div>
-          <div class="row"><span style="font-size:1.6rem">🌙</span><span><b>Abends</b> eine kleine Einheit mit Entspannung</span></div>
+          <div class="row"><span style="font-size:1.6rem">🌅</span><span><b>Morgens</b> ein kurzes Workout zum Wachwerden</span></div>
+          <div class="row"><span style="font-size:1.6rem">🌙</span><span><b>Abends</b> die Haupteinheit – vom Einstieg bis HIIT und Sprungkraft</span></div>
           <div class="row"><span style="font-size:1.6rem">🥦</span><span><b>Täglich</b> eine kleine Alltags-Gewohnheit</span></div>
         </div>
-        <p class="muted small" style="margin-top:16px">Zuerst ein paar Fragen (2–3 Minuten), damit wir das richtige Startlevel finden. Deine Daten bleiben auf deinen Geräten.</p>
+        <p class="muted small" style="margin-top:16px">Zuerst ein paar Fragen (2–3 Minuten), damit wir dein Level von 1 bis 8 finden. Deine Daten bleiben auf deinen Geräten.</p>
         ${isFirst ? '<button type="button" class="btn ghost block" id="join-existing">Schon auf einem anderen Gerät? Mit Code verbinden</button>' : ''}`;
     } else if (s === 'name') {
       html = `<h1>Wie sollen wir dich nennen?</h1>
@@ -242,6 +242,7 @@ function answers(d) {
   const num = (v) => (v === '' || v == null ? undefined : Number(String(v).replace(',', '.')));
   return {
     walk: d.walk ?? 0, chairStand: d.chairStand ?? 0, stairs: d.stairs ?? 0, joints: d.joints ?? 0, activeDays: d.activeDays ?? 0,
+    pushups: d.pushups ?? 0, run: d.run ?? 0,
     age: num(d.age), heightCm: num(d.heightCm), weightKg: num(d.weightKg), flags: d.flags,
   };
 }
@@ -331,7 +332,7 @@ function renderToday(p) {
       </section>
       ${checkinCard(p, today)}
       ${review ? `<div class="banner row spread"><span><b>Dein Wochenrückblick ist da</b><br><span class="small muted">Schau, was du letzte Woche geschafft hast.</span></span><button class="btn sm" id="review">Ansehen</button></div>` : ''}
-      ${sugg === 'up' ? `<div class="banner"><b>Bereit für mehr?</b><p class="small">Die Challenges fallen dir zuletzt leicht. Möchtest du auf Level ${p.level + 1} (${esc(LEVELS[p.level].name)}) wechseln?</p>
+      ${sugg === 'up' ? `<div class="banner"><b>Bereit für mehr?</b><p class="small">Die Challenges fallen dir zuletzt leicht. Möchtest du auf Level ${p.level + 1} (${esc(LEVELS[p.level].name)}) wechseln?${p.level + 1 === 6 ? ' Ab Level 6 kommen Sprünge und Intervalle dazu.' : ''}</p>
         <div class="row"><button class="btn sm" data-level="${p.level + 1}">Ja, Level ${p.level + 1}</button><button class="btn ghost sm" data-dismiss>Noch nicht</button></div></div>` : ''}
       ${sugg === 'down' ? `<div class="warn"><b>Etwas zu viel?</b><p class="small">Kein Problem – ein Schritt zurück ist auch ein Schritt. Auf Level ${p.level - 1} wechseln?</p>
         <div class="row"><button class="btn sm" data-level="${p.level - 1}">Ja, Level ${p.level - 1}</button><button class="btn ghost sm" data-dismiss>Nein, weiter so</button></div></div>` : ''}
@@ -463,7 +464,7 @@ function programCard(p, today) {
   const st = programState(p.program);
   if (!st) {
     return `<a class="card row link-card" href="#/uebungen">${icoTile('flag', 'violet')}
-      <span class="grow"><b>Programme entdecken</b><br><span class="small muted">Mit einem 6–8-Wochen-Plan ein klares Ziel erreichen – z. B. 30 Minuten am Stück gehen.</span></span><span class="chev">${ICON.chevron}</span></a>`;
+      <span class="grow"><b>Programme entdecken</b><br><span class="small muted">Mit einem 6–8-Wochen-Plan ein klares Ziel erreichen – ${p.level >= 6 ? 'z. B. 15 Burpees und 90 s Stütz im Athletik-Zirkel.' : p.level >= 4 ? 'z. B. 20 saubere Liegestütze.' : 'z. B. 30 Minuten am Stück gehen.'}</span></span><span class="chev">${ICON.chevron}</span></a>`;
   }
   const doneToday = p.sessions.some((s) => s.date === today && s.slot === 'program');
   const next = programSession(p.program);
@@ -776,14 +777,16 @@ function bindDifficulty(rerender) {
 /** Auswahl Dauer + Mischen + Start für einen Schwerpunkt (Schnell trainieren und Welten). */
 function workoutPicker(p, wish, c, { title = 'Schnell trainieren', sub = 'Wie viel Zeit hast du – und worauf hast du Lust?', focusChips = true } = {}) {
   const ids = [...new Set(c.steps.map((x) => x.id))];
+  const focusList = Object.entries(FOCUS).filter(([, f]) => focusAvailable(f, atDifficulty(p)));
   const ci = checkinOf(p, toKey());
   return `<section class="card quick">
     <div class="card-head">${icoTile('flag', 'green')}<div class="grow"><h2 style="margin:0">${title}</h2><span class="small muted">${sub}</span></div></div>
     <div class="seg-ctl" role="radiogroup" aria-label="Dauer">${QUICK_MINUTES.map((m) => `<button role="radio" aria-checked="${m === wish.minutes}" class="${m === wish.minutes ? 'on' : ''}" data-qmin="${m}">${m} Min</button>`).join('')}</div>
-    ${focusChips ? `<div class="chips-select" role="radiogroup" aria-label="Schwerpunkt">${Object.entries(FOCUS).map(([k, f]) => `<button type="button" role="radio" aria-checked="${k === wish.focus}" class="${k === wish.focus ? 'selected' : ''}" data-qfocus="${k}">${ICON[f.icon]}${f.label}</button>`).join('')}</div>` : ''}
+    ${focusChips ? `<div class="chips-select" role="radiogroup" aria-label="Schwerpunkt">${focusList.map(([k, f]) => `<button type="button" role="radio" aria-checked="${k === wish.focus}" class="${k === wish.focus ? 'selected' : ''}" data-qfocus="${k}">${ICON[f.icon]}${f.label}</button>`).join('')}</div>` : ''}
     ${difficultyHTML(p)}
     <p class="ex-line">${ids.map((id) => esc(byId[id].name)).join(' · ')}</p>
     ${ci?.pain?.length || ci?.energy === 1 ? `<div class="adapt-note">${ICON.heart}Angepasst an dein Befinden</div>` : ''}
+    ${c.interval ? `<p class="small muted" style="margin:0">${ICON.zap} Intervall: ${esc(c.title.split('·').pop().trim())} Belastung/Pause</p>` : ''}
     <div class="session-foot"><button type="button" class="link-btn" id="q-mix">${ICON.swap}Neu mischen</button><button class="btn" id="q-go">Starten · ${c.minutes} Min</button></div>
   </section>`;
 }
@@ -799,9 +802,9 @@ function bindPicker(p, wish, c, rerender) {
 // ---------- Trainingswelten ----------
 const worldWish = {};
 
-function worldsHTML() {
+function worldsHTML(p) {
   return `<h2 style="margin:28px 0 12px">Trainingswelten</h2>
-    <div class="ex-list">${Object.entries(WORLDS).map(([id, w]) => `<a class="card row link-card world-card" href="#/welt/${id}">${icoTile(w.icon, w.tone)}
+    <div class="ex-list">${Object.entries(WORLDS).filter(([, w]) => !w.minLevel || atDifficulty(p).level >= w.minLevel).map(([id, w]) => `<a class="card row link-card world-card" href="#/welt/${id}">${icoTile(w.icon, w.tone)}
       <span class="grow"><b>${esc(w.title)}</b><br><span class="small muted">${esc(w.teaser)}</span></span><span class="chev">${ICON.chevron}</span></a>`).join('')}</div>`;
 }
 
@@ -812,7 +815,9 @@ function renderWorld(p, id) {
   const c = customWorkout(wish, atDifficulty(p), toKey());
   const lvl = atDifficulty(p).level;
   const f = FOCUS[w.focus];
-  const exs = (f.ids ? f.ids.map((x) => byId[x]) : EXERCISES.filter((e) => f.cats.includes(e.cat) && !e.programOnly))
+  const noGear = w.equip && !(p.equipment || []).length;
+  const exs = (f.ids ? f.ids.map((x) => byId[x]) : EXERCISES.filter((e) => f.cats.includes(e.cat) && !e.programOnly
+      && (f.only !== 'jump' || e.jump) && (f.only !== 'equip' || e.equip) && !(f.exclude || []).includes(e.id)))
     .sort((a, b) => (a.base.findIndex((v) => v != null) - b.base.findIndex((v) => v != null)));
   const short = (ex, n) => (ex.unit === 'wdh' ? `${n}×` : `${n} s`);
   view.innerHTML = `<a class="link-btn back-link" href="#/uebungen">${ICON.back}Übungen</a>
@@ -820,25 +825,32 @@ function renderWorld(p, id) {
     <div class="stack">
       <section class="card"><p style="margin:0 0 12px">${esc(w.intro)}</p><ul class="points">${w.points.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
       ${w.safety ? `<div class="warn small"><b>Wichtig:</b> ${esc(w.safety)}</div>` : ''}
-      ${workoutPicker(p, wish, c, { title: `${w.title}: Kurz-Workout`, sub: 'Dauer wählen, mischen, loslegen.', focusChips: false })}
+      ${noGear ? `<section class="card"><p style="margin:0 0 12px">Sag uns zuerst, welche Geräte du hast – dann stellen wir die Workouts danach zusammen.</p><a class="btn soft" href="#/profil">Ausstattung im Profil wählen</a></section>`
+        : workoutPicker(p, wish, c, { title: `${w.title}: Kurz-Workout`, sub: 'Dauer wählen, mischen, loslegen.', focusChips: false })}
       <section class="card"><h3>Übungen</h3><ul class="log-list world-ex">${exs.map((e) => {
         const st = exStats(p, e.id);
         const from = e.base.findIndex((v) => v != null) + 1;
         return `<li><button type="button" data-ex="${e.id}"><span class="ex-ico">${e.icon}</span><span class="grow"><b>${esc(e.name)}</b><br>
-          <span class="small muted">${e.base[lvl - 1] != null ? esc(fmtAmount(e, e.base[lvl - 1])) : `ab Level ${from}`}${st ? ` · Bestwert ${short(e, st.best)}` : ''}</span></span><span class="chev">${ICON.chevron}</span></button></li>`;
+          <span class="small muted">${e.base[lvl - 1] != null ? esc(fmtAmount(e, e.base[lvl - 1])) : `ab Level ${from}`}${gearLabel(e)}${st ? ` · Bestwert ${short(e, st.best)}` : ''}</span></span><span class="chev">${ICON.chevron}</span></button></li>`;
       }).join('')}</ul></section>
       <section class="card"><div class="card-head">${icoTile('bulb', 'orange')}<div class="eyebrow">Tipps</div></div><ul class="points">${w.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
     </div>`;
-  bindPicker(p, wish, c, () => renderWorld(p, id));
+  if (!noGear) bindPicker(p, wish, c, () => renderWorld(p, id));
   $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex)));
+}
+
+/** „ · Kurzhanteln/Kettlebell“ bzw. „ · Sprung“ für Übungslisten. */
+function gearLabel(e) {
+  return `${e.equip ? ` · ${e.equip.map((g) => EQUIPMENT[g].label).join(' oder ')}` : ''}${e.jump ? ' · Sprung' : ''}`;
 }
 
 function renderLibrary(p) {
   const lvl = atDifficulty(p).level;
-  const list = EXERCISES.filter((e) => !e.programOnly && (!libFilter.cat || e.cat === libFilter.cat) && (!libFilter.mine || e.base[lvl - 1] != null));
+  const list = EXERCISES.filter((e) => !e.programOnly && (!libFilter.cat || e.cat === libFilter.cat) && (!libFilter.mine || (e.base[lvl - 1] != null && fitsGear(e, gearOf(p)))));
+  if (!focusAvailable(FOCUS[quick.focus], atDifficulty(p))) quick.focus = 'ganzkoerper';
   const qc = customWorkout(quick, atDifficulty(p), toKey());
   view.innerHTML = `${workoutPicker(p, quick, qc)}
-    ${worldsHTML()}
+    ${worldsHTML(p)}
     <h1 style="margin-top:28px">Programme</h1>
     <p class="small muted">Mehrwochen-Pläne mit 3 Einheiten pro Woche und einem klaren Ziel.</p>
     <div class="ex-list">${PROGRAMS.map((pr) => {
@@ -856,7 +868,7 @@ function renderLibrary(p) {
     </div>
     <p class="small muted">${list.length} Übungen${libFilter.mine ? ` für Level ${lvl}` : ''}</p>
     <div class="ex-list">${list.map((e) => `<button class="ex-item" data-ex="${e.id}"><span class="ico">${e.icon}</span>
-      <span style="flex:1"><b>${esc(e.name)}</b><br><span class="small muted">${CATEGORIES[e.cat].label} · ${POSITIONS[e.pos]}</span></span>
+      <span style="flex:1"><b>${esc(e.name)}</b><br><span class="small muted">${CATEGORIES[e.cat].label} · ${POSITIONS[e.pos]}${esc(gearLabel(e))}</span></span>
       <span class="small muted">${e.base[lvl - 1] != null ? esc(fmtAmount(e, e.base[lvl - 1])) : `ab L${e.base.findIndex((v) => v != null) + 1}`}</span></button>`).join('')}</div>`;
 
   $('[data-mine]').addEventListener('click', () => { libFilter.mine = !libFilter.mine; renderLibrary(p); });
@@ -882,6 +894,7 @@ function showProgram(p, id) {
     <p>${esc(pr.desc)}</p>
     <div class="banner small"><b>🎯 Ziel:</b> ${esc(pr.goal)} · ${pr.weeks} Wochen · 3 Einheiten pro Woche<br>
       Empfohlen für Level ${pr.levels.join(', ')}${pr.levels.includes(p.level) ? ' – passt zu dir.' : ` – du bist auf Level ${p.level}.`}</div>
+    ${pr.plan.flat().some((s) => byId[s.id].jump) ? `<p class="small muted">${ICON.info} Enthält Sprungübungen${p.noJumps ? ' – du hast „Sprünge weglassen“ gewählt. Mach die leichtere Variante ohne Sprung.' : '.'}</p>` : ''}
     ${st ? `<p style="margin-top:12px"><b>Dein Stand:</b> Woche ${st.week}, Einheit ${st.session} · ${st.pct} %</p>` : ''}
     <h3 style="margin-top:16px">Ablauf</h3>
     ${pr.plan.map((w, i) => `<details ${st && st.week === i + 1 ? 'open' : ''} style="margin-bottom:8px"><summary>Woche ${i + 1}${st && st.week > i + 1 ? ' ✓' : ''}</summary>
@@ -915,7 +928,7 @@ function showExercise(p, id) {
   const sheet = openSheet(`<div class="row spread"><span style="font-size:2rem">${e.icon}</span><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     ${hasFigure(id) ? '<div class="fig-stage" id="ex-fig" style="margin-bottom:12px"></div>' : ''}
     <h2>${esc(e.name)}</h2>
-    <p class="muted small">${CATEGORIES[e.cat].icon} ${CATEGORIES[e.cat].label} · ${POSITIONS[e.pos]}${e.perSide ? ' · je Seite' : ''}</p>
+    <p class="muted small">${CATEGORIES[e.cat].icon} ${CATEGORIES[e.cat].label} · ${POSITIONS[e.pos]}${e.perSide ? ' · je Seite' : ''}${esc(gearLabel(e))}</p>
     <h3>So geht's</h3><ol class="steps">${e.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
     <div class="banner small"><b>💡 Tipp:</b> ${esc(e.tip)}</div>
     <div class="grid2" style="margin-top:12px">
@@ -1122,6 +1135,15 @@ function renderProfile(p) {
         <button class="btn soft" id="reassess">Einstufungstest wiederholen</button>
       </section>
 
+      <section class="card stack"><h2>Ausstattung</h2>
+        <p class="small muted" style="margin:0">Was hast du zu Hause? Passende Übungen kommen dann auch in deine Challenges.</p>
+        <div class="chips-select" role="group" aria-label="Ausstattung">${Object.entries(EQUIPMENT).map(([k, g]) => {
+          const on = (p.equipment || []).includes(k);
+          return `<button type="button" aria-pressed="${on}" class="${on ? 'selected' : ''}" data-equip="${k}">${g.icon} ${esc(g.label)}</button>`;
+        }).join('')}</div>
+        <label class="check"><input type="checkbox" id="no-jumps" ${p.noJumps ? 'checked' : ''}><span>Sprünge weglassen<br><span class="small muted">z. B. wegen Nachbarn, Knien oder Beckenboden – du bekommst leise Alternativen.</span></span></label>
+      </section>
+
       <section class="card stack"><h2>Erinnerungen</h2>
         <div class="grid2">
           <label class="field"><span>🌅 Morgens</span><input type="time" id="r-m" value="${p.reminders.morning}"></label>
@@ -1171,6 +1193,15 @@ function renderProfile(p) {
   $('#wgoal').addEventListener('change', (e) => { p.weekGoals[weekStart()] = Number(e.target.value); p.weekGoalDefault = Number(e.target.value); store.save(); toast('Wochenziel gespeichert'); });
   $('#water').addEventListener('change', (e) => { p.waterGoal = Number(e.target.value); store.save(); toast('Trinkziel gespeichert'); });
   $('#reassess').addEventListener('click', () => reassess(p));
+  $$('[data-equip]').forEach((b) => b.addEventListener('click', () => {
+    const k = b.dataset.equip;
+    const list = p.equipment || [];
+    p.equipment = list.includes(k) ? list.filter((x) => x !== k) : [...list, k];
+    store.save();
+    renderProfile(p);
+    $(`[data-equip="${k}"]`)?.focus();
+  }));
+  $('#no-jumps').addEventListener('change', (e) => { p.noJumps = e.target.checked; store.save(); toast(e.target.checked ? 'Sprünge werden weggelassen' : 'Sprünge sind wieder dabei'); });
   const saveRem = () => { p.reminders = { morning: $('#r-m').value || '07:30', evening: $('#r-e').value || '19:00' }; store.save(); };
   $('#r-m').addEventListener('change', saveRem);
   $('#r-e').addEventListener('change', saveRem);
@@ -1242,7 +1273,7 @@ function buildICS(p) {
   const anchor = (slot) => (p.plan?.[slot] ? ` ${p.plan[slot]}.` : '');
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Aufwind//DE', 'CALSCALE:GREGORIAN',
     ev('morning', p.reminders.morning, '🌅 Aufwind: Morgen-Challenge', `Ein paar Minuten für dich – öffne Aufwind.${anchor('morning')}`),
-    ev('evening', p.reminders.evening, '🌙 Aufwind: Abend-Challenge', `Kleine Einheit und Entspannung – öffne Aufwind.${anchor('evening')}`),
+    ev('evening', p.reminders.evening, '🌙 Aufwind: Abend-Challenge', `Zeit für deine Abend-Einheit – öffne Aufwind.${anchor('evening')}`),
     'END:VCALENDAR'].join('\r\n');
 }
 

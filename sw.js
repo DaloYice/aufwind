@@ -1,5 +1,5 @@
 // Service Worker: Network-First für App-Dateien (immer aktuell), Cache als Offline-Fallback.
-const CACHE = 'aufwind-v8';
+const CACHE = 'aufwind-v9';
 const ASSETS = [
   './', './index.html', './css/app.css', './manifest.webmanifest', './icons/icon.svg',
   './js/app.js', './js/store.js', './js/player.js', './js/ui.js', './js/chart.js',

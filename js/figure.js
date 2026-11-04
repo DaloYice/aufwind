@@ -79,6 +79,7 @@ function propsSVG(props = []) {
     if (type === 'table') return `<rect x="${x}" y="${y}" width="${200 - x}" height="7" rx="2" class="prop-fill"/><path d="M${x + 8} ${y + 7} V185 M196 ${y + 7} V185" class="prop"/>`;
     if (type === 'stairs') return `<path d="M${x} 185 V170 H${x + 30} V155 H${x + 60} V140 H200" class="prop thick"/>`;
     if (type === 'mat') return `<rect x="10" y="184" width="180" height="4" rx="2" class="prop-fill"/>`;
+    if (type === 'bar') return `<path d="M${x - 20} ${y} H${x + 20}" class="prop thick"/><path d="M${x - 20} ${y} V12 M${x + 20} ${y} V12" class="prop"/>`;
     return '';
   }).join('');
 }
@@ -103,6 +104,29 @@ function limbPath(seg, foot, tip = 0) {
   return d;
 }
 
+/**
+ * Geräte in der Hand bzw. zwischen den Füßen: hold 'db' Kurzhanteln, 'db1' eine Kurzhantel (nahe Hand), 'kb' Kettlebell,
+ * 'band' zwischen den Händen, 'miniband' um die Beine, ['anchor', x, y] Band von der nahen Hand zu einem Befestigungspunkt.
+ */
+function gearSVG(hold, s) {
+  if (!hold) return '';
+  const hands = s.arms.map((a) => a[2]);
+  const f = (v) => v.toFixed(1);
+  if (hold === 'db') return hands.map(([x, y]) => `<path class="gear" d="M${f(x - 7)} ${f(y)} H${f(x + 7)}"/><rect class="gear-fill" x="${f(x - 9)}" y="${f(y - 4)}" width="4" height="8" rx="1"/><rect class="gear-fill" x="${f(x + 5)}" y="${f(y - 4)}" width="4" height="8" rx="1"/>`).join('');
+  if (hold === 'kb') {
+    const [x, y] = [(hands[0][0] + hands[1][0]) / 2, (hands[0][1] + hands[1][1]) / 2];
+    return `<circle class="gear-fill" cx="${f(x)}" cy="${f(y + 9)}" r="7"/><path class="gear" d="M${f(x - 4)} ${f(y + 3)} Q${f(x)} ${f(y - 3)} ${f(x + 4)} ${f(y + 3)}"/>`;
+  }
+  if (hold === 'db1') { const [x, y] = hands[1]; return `<path class="gear" d="M${f(x - 7)} ${f(y)} H${f(x + 7)}"/><rect class="gear-fill" x="${f(x - 9)}" y="${f(y - 4)}" width="4" height="8" rx="1"/><rect class="gear-fill" x="${f(x + 5)}" y="${f(y - 4)}" width="4" height="8" rx="1"/>`; }
+  if (Array.isArray(hold) && hold[0] === 'anchor') return `<path class="band" d="M${f(hands[1][0])} ${f(hands[1][1])} L${hold[1]} ${hold[2]}"/><circle class="gear-fill" cx="${hold[1]}" cy="${hold[2]}" r="3"/>`;
+  if (hold === 'band') return `<path class="band" d="M${f(hands[0][0])} ${f(hands[0][1])} L${f(hands[1][0])} ${f(hands[1][1])}"/>`;
+  if (hold === 'miniband') {
+    const k = s.legs.map((l) => l[1]);
+    return `<path class="band" d="M${f(k[0][0])} ${f(k[0][1] + 6)} L${f(k[1][0])} ${f(k[1][1] + 6)}"/>`;
+  }
+  return '';
+}
+
 function draw(svg, s) {
   const front = s.view === 'front';
   const parts = svg.querySelector('.fig');
@@ -116,7 +140,7 @@ function draw(svg, s) {
     ${front ? `<path class="torso thin" d="M${farLeg[0][0].toFixed(1)} ${farLeg[0][1].toFixed(1)} L${nearLeg[0][0].toFixed(1)} ${nearLeg[0][1].toFixed(1)} M${farArm[0][0].toFixed(1)} ${farArm[0][1].toFixed(1)} L${nearArm[0][0].toFixed(1)} ${nearArm[0][1].toFixed(1)}"/>` : ''}
     <path class="limb" d="${limbPath(nearLeg, footMode, s.tip)}"/>
     <path class="limb" d="${limbPath(nearArm)}"/>
-    <circle class="head" cx="${s.head[0].toFixed(1)}" cy="${s.head[1].toFixed(1)}" r="${L.head}"/>`;
+    <circle class="head" cx="${s.head[0].toFixed(1)}" cy="${s.head[1].toFixed(1)}" r="${L.head}"/>${gearSVG(s.hold, s)}`;
 }
 
 /**
@@ -151,10 +175,10 @@ export function mountFigure(container, exerciseId, { size = 200 } = {}) {
     const a = keys[i], b = keys[(i + 1) % keys.length];
     let k = t / (a.d || 900);
     k = reduce ? 0 : (1 - Math.cos(Math.PI * Math.min(1, k / (a.hold ? 0.6 : 1)))) / 2; // weich, optional mit Haltephase
-    draw(svg, solve(mix(a.p, b.p, k), view));
+    draw(svg, { ...solve(mix(a.p, b.p, k), view), hold: def.hold });
     raf = requestAnimationFrame(frame);
   }
-  if (keys.length === 1) draw(svg, solve(keys[0].p, view));
+  if (keys.length === 1) draw(svg, { ...solve(keys[0].p, view), hold: def.hold });
   else raf = requestAnimationFrame(frame);
   return () => { stopped = true; cancelAnimationFrame(raf); };
 }
@@ -168,7 +192,7 @@ export function renderStatic(container, exerciseId, keyIndex = 0, size = 160) {
   svg.setAttribute('width', size);
   svg.setAttribute('height', size);
   svg.innerHTML = `<line x1="0" y1="185.5" x2="200" y2="185.5" class="ground"/>${propsSVG(def.props)}<g class="fig"></g>`;
-  draw(svg, solve(def.keys[Math.min(keyIndex, def.keys.length - 1)].p, def.view || 'side'));
+  draw(svg, { ...solve(def.keys[Math.min(keyIndex, def.keys.length - 1)].p, def.view || 'side'), hold: def.hold });
   container.appendChild(svg);
   return svg;
 }

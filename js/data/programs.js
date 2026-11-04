@@ -48,6 +48,36 @@ export const PROGRAMS = [
       { id: 'bauchatmung', amount: 60 },
     ]),
   },
+  {
+    id: 'kraft-aufbau', icon: '💪', name: 'Kraft-Aufbau', weeks: 6, levels: [4, 5, 6],
+    goal: '20 saubere Liegestütze und 20 Bulgarische Kniebeugen je Bein',
+    desc: 'Klassische Progression: Jede Woche etwas mehr Wiederholungen bei Liegestütz, Beinen und Rumpf – drei Runden, kurze Pausen.',
+    plan: [8, 10, 12, 14, 17, 20].map((reps, w) => {
+      const round = [
+        { id: 'bodenliegestuetz', amount: reps },
+        { id: 'bulgarisch', amount: Math.round(reps * 0.75) },
+        { id: 'bodenplank', amount: 30 + w * 10 },
+        { id: 'einbeinbruecke', amount: Math.round(reps * 0.6) + 2 },
+      ];
+      return [{ id: 'armschwung', amount: 45 }, ...round, ...round, ...(w >= 2 ? round : []), { id: 'hueftoeffner', amount: 30 }];
+    }),
+  },
+  {
+    id: 'athletik', icon: '⚡', name: 'Athletik', weeks: 6, levels: [6, 7, 8],
+    goal: '15 Burpees, 15 Sprungkniebeugen und 90 s Unterarmstütz in einem Zirkel',
+    desc: 'Zirkeltraining für Fitte: Sprungkraft, Kraft und Rumpf im Wechsel, Woche für Woche mehr Volumen und eine Runde zusätzlich.',
+    plan: [0, 1, 2, 3, 4, 5].map((w) => {
+      const round = [
+        { id: 'burpee', amount: 8 + Math.round(w * 1.4) },
+        { id: 'diamantliegestuetz', amount: 8 + w },
+        { id: 'sprungkniebeuge', amount: 10 + w },
+        { id: 'bodenplank', amount: 45 + w * 9 },
+        { id: 'skater', amount: 30 + w * 3 },
+      ];
+      const rounds = w < 2 ? 2 : w < 4 ? 3 : 4;
+      return [{ id: 'armschwung', amount: 45 }, ...Array.from({ length: rounds }, () => round).flat(), { id: 'hueftoeffner', amount: 30 }];
+    }),
+  },
 ];
 
 export const programById = Object.fromEntries(PROGRAMS.map((p) => [p.id, p]));
