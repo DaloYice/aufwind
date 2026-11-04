@@ -10,9 +10,9 @@ crons = ["*/5 * * * *"]
 # Derselbe KV-Speicher wie die Pages-Bindung AUFWIND_SYNC (ID: npx wrangler kv namespace list)
 [[kv_namespaces]]
 binding = "AUFWIND_SYNC"
-id = "KV_NAMESPACE_ID_EINTRAGEN"
+id = "3d7a9fdfdee040d7ba09445ae19d32f4"
 
 [vars]
 # Öffentlicher VAPID-Schlüssel (wird von push/setup-vapid.mjs eingetragen; der private liegt nur als Secret im Worker)
-VAPID_PUBLIC = "VAPID_PUBLIC_EINTRAGEN"
+VAPID_PUBLIC = "BBKdjXIqsJriQJe7qP76eMyB8aLsCkXKNFRo2_2x0k1u2poKonsvDz5C7uq72KpdFyqq0B76i5UjSQVUK2nYUn8"
 VAPID_SUBJECT = "https://aufwind-4er.pages.dev"
