@@ -1,5 +1,6 @@
 /* Aufwind – Design „Dark Sport“ (ab v0.9.0): dunkel als Standard, eine leuchtende Akzentfarbe, große Zahlen, Kacheln.
-   Darstellung: html[data-theme] = dark (Standard) | light | auto (folgt dem System); html[data-accent] = Akzentfarbe.
+   Darstellung: html[data-theme] = dark | light („Wie System“ löst JS auf), html[data-accent] = Akzentfarbe (Design Sport),
+   html[data-design] = sport | energie | frisch (siehe Ende der Datei).
    --primary ist die Akzent-FLÄCHE (Knöpfe, Ringe), --primary-text die Akzent-SCHRIFT (im Hellen dunkler, damit lesbar).
    Weitere Farben: Orange (Morgen/Serie), Violett (Abend), Blau (Wasser/Diagramme). */
 
@@ -71,25 +72,6 @@
   --hm1: #d6eafc; --hm2: #a5d0f7; --hm3: #6db3f1; --hm4: #2f90e6; --hm5: #1667b3;
   color-scheme: light;
 }
-@media (prefers-color-scheme: light) {
-  :root[data-theme="auto"] {
-    --bg: #f3f4f7; --surface: #ffffff; --surface-2: #eceef2; --surface-3: #e1e4ea; --surface-glass: rgb(255 255 255 / .82);
-    --text: #0e1013; --muted: #5e6470; --line: #e3e6eb;
-    --primary-text: var(--acc-deep); --primary-soft: color-mix(in srgb, var(--acc) 26%, white);
-    --glow: 0 6px 18px color-mix(in srgb, var(--acc) 45%, transparent);
-    --accent: #f08a24; --accent-ink: #b45309; --accent-soft: #ffedd9;
-    --sky: #6a55f0; --sky-soft: #ece8ff; --water: #1c8ae6; --water-soft: #e1f0fd; --danger: #d93a4a;
-    --hero-grad: radial-gradient(130% 120% at 100% 0%, color-mix(in srgb, var(--sky) 16%, transparent) 0%, transparent 62%), var(--surface);
-    --shadow-sm: 0 1px 2px rgb(14 16 19 / .06);
-    --shadow: 0 1px 2px rgb(14 16 19 / .05), 0 8px 24px rgb(14 16 19 / .07);
-    --shadow-lg: 0 2px 6px rgb(14 16 19 / .08), 0 18px 44px rgb(14 16 19 / .14);
-    --fig: var(--acc-deep); --fig-far: color-mix(in srgb, var(--acc-deep) 35%, white); --fig-prop: #b4b9c3;
-    --viz-1: #1c8ae6; --viz-neg: #e34948; --viz-mid: #cfd3da;
-    --hm1: #d6eafc; --hm2: #a5d0f7; --hm3: #6db3f1; --hm4: #2f90e6; --hm5: #1667b3;
-    color-scheme: light;
-  }
-}
-
 /* ---------- Akzentfarben ---------- */
 :root[data-accent="koralle"] { --acc: #ff5c7a; --acc-deep: #c41f45; }
 :root[data-accent="violett"] { --acc: #9d8cff; --acc-deep: #5b45e6; }
@@ -750,3 +732,107 @@ button.tile:active, a.tile:active { transform: scale(.97); }
 .quick .chips-select { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--s4)); padding: 2px var(--s4); scroll-snap-type: x proximity; }
 .quick .chips-select::-webkit-scrollbar { display: none; }
 .quick .chips-select button { flex: none; scroll-snap-align: start; }
+
+/* =====================================================================
+   Designs (ab v0.9.0, im Profil wählbar): html[data-design] = sport (Standard) | energie | frisch.
+   Jedes Design hat eine dunkle und eine helle Fassung (html[data-theme] ist immer light oder dark;
+   „Wie System“ wird in JS aufgelöst).
+   ===================================================================== */
+
+/* ---------- Energie: Violett-Pink-Verlauf oben, Verlaufs-Knöpfe, dunkle Workout-Karte ---------- */
+:root[data-design="energie"] {
+  --acc: #ff4f8b; --acc-deep: #c2185b;
+  --primary-ink: #ffffff;
+  --grad-primary: linear-gradient(135deg, #ff4f8b, #ff8a3d);
+  --sky: #a78bfa; --sky-soft: rgb(167 139 250 / .16);
+  --bg: #0f0d1a; --surface: #1a1730; --surface-2: #262243; --surface-3: #312c55; --line: #2c2850;
+  --surface-glass: rgb(26 23 48 / .85);
+  --glow: 0 8px 22px rgb(255 79 139 / .35);
+  --hero-grad: #0b0a16;
+  --band: linear-gradient(135deg, #4f2bd9 0%, #8a2be2 55%, #ff4f8b 100%);
+}
+:root[data-design="energie"][data-theme="light"] {
+  --bg: #f4f3fb; --surface: #ffffff; --surface-2: #eeecf8; --surface-3: #e3e0f3; --line: #e6e3f4;
+  --surface-glass: rgb(255 255 255 / .86); --text: #17152b; --muted: #625e7c;
+  --primary-text: #c2185b; --primary-soft: #ffe3ee;
+  --sky: #6d4aff; --sky-soft: #ece6ff;
+  --glow: 0 8px 20px rgb(255 79 139 / .35);
+  --hero-grad: #17152b;
+  --fig: #ff4f8b; --fig-far: #ffb3cd;
+}
+
+/* ---------- Frisch: Mint, Pastell-Kacheln, viel Weiß ---------- */
+:root[data-design="frisch"] {
+  --acc: #34d399; --acc-deep: #047857;
+  --primary-ink: #04281c;
+  --bg: #0c1513; --surface: #13201c; --surface-2: #1c2c27; --surface-3: #253830; --line: #213530;
+  --surface-glass: rgb(19 32 28 / .86);
+  --glow: 0 8px 20px rgb(52 211 153 / .28);
+  --hero-grad: var(--surface);
+  --pastel-1: rgb(59 130 246 / .16); --pastel-1-ink: #93c5fd;
+  --pastel-2: rgb(168 85 247 / .16); --pastel-2-ink: #d8b4fe;
+  --pastel-3: rgb(249 115 22 / .15); --pastel-3-ink: #fdba74;
+  --pastel-4: rgb(34 197 94 / .15); --pastel-4-ink: #86efac;
+  --stats-grad: linear-gradient(160deg, rgb(52 211 153 / .16), rgb(59 130 246 / .1));
+}
+:root[data-design="frisch"][data-theme="light"] {
+  --bg: #f7faf9; --surface: #ffffff; --surface-2: #edf3f1; --surface-3: #e2ebe8; --line: #e3ece9;
+  --surface-glass: rgb(255 255 255 / .88); --text: #10231d; --muted: #5b6f68;
+  --acc: #10b981; --primary-ink: #ffffff; --primary-text: #047857; --primary-soft: #d9fbef;
+  --glow: 0 8px 18px rgb(16 185 129 / .3);
+  --pastel-1: #e7f0ff; --pastel-1-ink: #1d4ed8;
+  --pastel-2: #f3e8ff; --pastel-2-ink: #7e22ce;
+  --pastel-3: #fff1e6; --pastel-3-ink: #c2570c;
+  --pastel-4: #dcfce7; --pastel-4-ink: #15803d;
+  --stats-grad: linear-gradient(160deg, #d9fbef, #e7f3ff);
+  --fig: #059669; --fig-far: #a7f3d0;
+}
+
+/* Energie: Farbband hinter der Begrüßung, Verlaufs-Knöpfe, dunkle Haupt-Karte */
+:root[data-design="energie"] body { background: var(--band) top / 100% 250px no-repeat, var(--bg); }
+:root[data-design="energie"] .greet, :root[data-design="energie"] .greet .eyebrow { color: #fff; }
+:root[data-design="energie"] .greet .avatar { background: rgb(255 255 255 / .18); border-color: rgb(255 255 255 / .3); }
+:root[data-design="energie"] .btn:not(.ghost):not(.soft):not(.danger):not(.light),
+:root[data-design="energie"] .tab-go:not(.done),
+:root[data-design="energie"] .icon-btn.primary { background: var(--grad-primary); color: #fff; }
+:root[data-design="energie"] .tab-go:not(.done) { background: linear-gradient(135deg, #4f2bd9, #ff4f8b); }
+:root[data-design="energie"] .session.hero { background: var(--hero-grad); color: #fff; border-color: transparent; }
+:root[data-design="energie"] .session.hero .meta, :root[data-design="energie"] .session.hero .ex-line,
+:root[data-design="energie"] .session.hero .slot-label .muted { color: rgb(255 255 255 / .7); }
+:root[data-design="energie"] .session.hero .link-btn { color: #ff8fb4; }
+:root[data-design="energie"] .session.hero .session-fig { background: rgb(255 255 255 / .1); --fig: #ff8fb4; --fig-far: rgb(255 143 180 / .4); }
+:root[data-design="energie"] .today-card { box-shadow: 0 12px 30px rgb(79 43 217 / .18); }
+:root[data-design="energie"] .chips-select button.selected, :root[data-design="energie"] .filters button.on { background: var(--grad-primary); border-color: transparent; color: #fff; }
+:root[data-design="energie"] .player .ring .fg { stroke: #ff4f8b; }
+
+/* Frisch: getönte Statuskarte, jede Kachel in eigener Pastellfarbe */
+:root[data-design="frisch"] .today-card { background: var(--stats-grad); border-color: transparent; }
+:root[data-design="frisch"] .session.hero { background: var(--surface); }
+:root[data-design="frisch"] .bento .tile:nth-child(1) { background: var(--pastel-1); border-color: transparent; }
+:root[data-design="frisch"] .bento .tile:nth-child(2) { background: var(--pastel-2); border-color: transparent; }
+:root[data-design="frisch"] .bento .tile:nth-child(3) { background: var(--pastel-3); border-color: transparent; }
+:root[data-design="frisch"] .bento .tile:nth-child(4), :root[data-design="frisch"] .bento .tile:nth-child(5) { background: var(--pastel-4); border-color: transparent; }
+:root[data-design="frisch"] .bento .tile:nth-child(1) .tile-num, :root[data-design="frisch"] .bento .tile:nth-child(1) .tile-label { color: var(--pastel-1-ink); }
+:root[data-design="frisch"] .bento .tile:nth-child(2) .tile-num, :root[data-design="frisch"] .bento .tile:nth-child(2) .tile-label { color: var(--pastel-2-ink); }
+:root[data-design="frisch"] .bento .tile:nth-child(3) .tile-label { color: var(--pastel-3-ink); }
+:root[data-design="frisch"] .tab-go:not(.done) { background: var(--text); color: var(--acc); box-shadow: 0 8px 20px rgb(0 0 0 / .25); }
+:root[data-design="frisch"] .ring .fg { stroke: var(--acc); }
+
+/* Design-Auswahl im Profil: kleine Vorschau-Karten */
+.design-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s2); }
+.design-pick button {
+  border: 2px solid var(--line); border-radius: var(--r1); background: var(--surface-2); color: inherit; font: inherit;
+  padding: 6px 6px 8px; cursor: pointer; display: grid; gap: 6px; text-align: center; font-weight: 700; font-size: .85rem;
+}
+.design-pick button[aria-checked="true"] { border-color: var(--primary); }
+.design-pick .pv { height: 74px; border-radius: 10px; position: relative; overflow: hidden; }
+.design-pick .pv i { position: absolute; left: 10%; right: 10%; height: 12px; border-radius: 4px; }
+.design-pick .pv.sport { background: #0b0c0f; }
+.design-pick .pv.sport i:nth-child(1) { top: 14px; background: #16181d; height: 22px; }
+.design-pick .pv.sport i:nth-child(2) { bottom: 12px; background: #c6f432; }
+.design-pick .pv.energie { background: linear-gradient(#8a2be2 0 40%, #f4f3fb 40%); }
+.design-pick .pv.energie i:nth-child(1) { top: 18px; background: #fff; height: 20px; }
+.design-pick .pv.energie i:nth-child(2) { bottom: 12px; background: linear-gradient(90deg, #ff4f8b, #ff8a3d); }
+.design-pick .pv.frisch { background: #f7faf9; }
+.design-pick .pv.frisch i:nth-child(1) { top: 14px; background: linear-gradient(160deg, #d9fbef, #e7f3ff); height: 22px; }
+.design-pick .pv.frisch i:nth-child(2) { bottom: 12px; background: #10b981; }

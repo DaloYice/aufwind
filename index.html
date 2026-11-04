@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de" data-theme="dark" data-accent="limette">
+<html lang="de" data-theme="dark" data-accent="limette" data-design="sport">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -10,8 +10,10 @@
     // Hell/Dunkel und Akzentfarbe vor dem ersten Zeichnen setzen (kein Aufblitzen)
     try {
       const st = JSON.parse(localStorage.getItem('aufwind:v1') || '{}').settings || {};
-      if (st.theme) document.documentElement.dataset.theme = st.theme;
-      if (st.accent) document.documentElement.dataset.accent = st.accent;
+      const r = document.documentElement;
+      if (st.theme) r.dataset.theme = st.theme === 'auto' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : st.theme;
+      if (st.accent) r.dataset.accent = st.accent;
+      if (st.design) r.dataset.design = st.design;
     } catch { /* ohne gespeicherte Einstellungen */ }
   </script>
   <link rel="manifest" href="manifest.webmanifest">

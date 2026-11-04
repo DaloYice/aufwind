@@ -40,6 +40,13 @@ const FONT_SIZES = { normal: { label: 'Normal', scale: 1 }, gross: { label: 'Gro
 const REST_LABELS = { kurz: 'Kurz', normal: 'Normal', lang: 'Lang' };
 
 const THEMES = { dark: 'Dunkel', light: 'Hell', auto: 'Wie System' };
+/** Designs mit passendem Start-Modus (Hell/Dunkel bleibt danach frei wählbar). */
+const DESIGNS = {
+  sport: { label: 'Sport', desc: 'Dunkel, leuchtende Akzentfarbe', mode: 'dark' },
+  energie: { label: 'Energie', desc: 'Violett-Pink-Verlauf, kräftig', mode: 'light' },
+  frisch: { label: 'Frisch', desc: 'Hell, Mint und Pastell', mode: 'light' },
+};
+const systemDark = matchMedia('(prefers-color-scheme: dark)');
 const ACCENTS = {
   limette: { label: 'Limette', color: '#c6f432' }, koralle: { label: 'Koralle', color: '#ff5c7a' },
   violett: { label: 'Violett', color: '#9d8cff' }, cyan: { label: 'Cyan', color: '#2fd8f0' }, orange: { label: 'Orange', color: '#ffa53a' },
@@ -51,8 +58,10 @@ function applyFontSize() {
   const fs = FONT_SIZES[st.fontSize] || FONT_SIZES.normal;
   const root = document.documentElement;
   root.style.setProperty('--fs', String(fs.scale));
-  root.dataset.theme = THEMES[st.theme] ? st.theme : 'dark';
+  const theme = THEMES[st.theme] ? st.theme : 'dark';
+  root.dataset.theme = theme === 'auto' ? (systemDark.matches ? 'dark' : 'light') : theme;
   root.dataset.accent = ACCENTS[st.accent] ? st.accent : 'limette';
+  root.dataset.design = DESIGNS[st.design] ? st.design : 'sport';
   // Statusleiste des Handys in der Hintergrundfarbe
   requestAnimationFrame(() => $('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.body).backgroundColor));
 }
@@ -1233,14 +1242,18 @@ function renderProfile(p) {
       </section>
 
       <section class="card stack"><h2>Darstellung</h2>
+        <div class="field"><span>Design</span><div class="design-pick" role="radiogroup" aria-label="Design">${Object.entries(DESIGNS).map(([k, d]) => {
+          const on = k === (DESIGNS[s.settings.design] ? s.settings.design : 'sport');
+          return `<button type="button" role="radio" aria-checked="${on}" data-design-set="${k}" title="${esc(d.desc)}"><span class="pv ${k}" aria-hidden="true"><i></i><i></i></span>${d.label}</button>`;
+        }).join('')}</div></div>
         <div class="field"><span>Modus</span><div class="seg-ctl" role="radiogroup" aria-label="Hell oder dunkel">${Object.entries(THEMES).map(([k, v]) => {
           const on = k === (THEMES[s.settings.theme] ? s.settings.theme : 'dark');
           return `<button role="radio" aria-checked="${on}" class="${on ? 'on' : ''}" data-theme-set="${k}">${v}</button>`;
         }).join('')}</div></div>
-        <div class="field"><span>Akzentfarbe</span><div class="swatches" role="radiogroup" aria-label="Akzentfarbe">${Object.entries(ACCENTS).map(([k, a]) => {
+        ${(s.settings.design || 'sport') === 'sport' ? `<div class="field"><span>Akzentfarbe</span><div class="swatches" role="radiogroup" aria-label="Akzentfarbe">${Object.entries(ACCENTS).map(([k, a]) => {
           const on = k === (ACCENTS[s.settings.accent] ? s.settings.accent : 'limette');
           return `<button type="button" role="radio" aria-checked="${on}" aria-label="${a.label}" title="${a.label}" style="--sw:${a.color}" data-accent-set="${k}"></button>`;
-        }).join('')}</div></div>
+        }).join('')}</div></div>` : ''}
       </section>
 
       <section class="card stack"><h2>Einstellungen</h2>
@@ -1307,6 +1320,11 @@ function renderProfile(p) {
   $('#ics').addEventListener('click', () => { saveRem(); download('aufwind-erinnerungen.ics', buildICS(p), 'text/calendar'); });
   $('#set-speech').addEventListener('change', (e) => { s.settings.speech = e.target.checked; store.save(); });
   $$('[data-fs]').forEach((b) => b.addEventListener('click', () => { s.settings.fontSize = b.dataset.fs; applyFontSize(); store.save(); renderProfile(p); $(`[data-fs="${b.dataset.fs}"]`)?.focus(); }));
+  $$('[data-design-set]').forEach((b) => b.addEventListener('click', () => {
+    const d = b.dataset.designSet;
+    if (d !== (s.settings.design || 'sport')) { s.settings.design = d; s.settings.theme = DESIGNS[d].mode; }
+    applyFontSize(); store.save(); renderProfile(p); $(`[data-design-set="${d}"]`)?.focus();
+  }));
   $$('[data-theme-set]').forEach((b) => b.addEventListener('click', () => { s.settings.theme = b.dataset.themeSet; applyFontSize(); store.save(); renderProfile(p); $(`[data-theme-set="${b.dataset.themeSet}"]`)?.focus(); }));
   $$('[data-accent-set]').forEach((b) => b.addEventListener('click', () => { s.settings.accent = b.dataset.accentSet; applyFontSize(); store.save(); renderProfile(p); $(`[data-accent-set="${b.dataset.accentSet}"]`)?.focus(); }));
   $$('[data-rest]').forEach((b) => b.addEventListener('click', () => { s.settings.rest = b.dataset.rest; store.save(); renderProfile(p); $(`[data-rest="${b.dataset.rest}"]`)?.focus(); }));
@@ -1475,6 +1493,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) showUpdateBar(); });
 }
 applyFontSize();
+systemDark.addEventListener('change', () => { if (store.getState().settings.theme === 'auto') applyFontSize(); });
 route();
 startReminders();
 startSync(onRemoteChange);
