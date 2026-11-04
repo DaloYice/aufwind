@@ -23,7 +23,7 @@ import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported } from './reminders.js';
 
-const VERSION = '0.8.0';
+const VERSION = '0.9.0';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung', custom: 'Training nach Wunsch' };
 const view = $('#view');
 const tabbar = $('#tabbar');
@@ -39,10 +39,22 @@ const opts = (list, sel, empty = '— kein fester Zeitpunkt —') =>
 const FONT_SIZES = { normal: { label: 'Normal', scale: 1 }, gross: { label: 'Groß', scale: 1.12 }, sehrgross: { label: 'Sehr groß', scale: 1.25 } };
 const REST_LABELS = { kurz: 'Kurz', normal: 'Normal', lang: 'Lang' };
 
-/** Schriftgröße (pro Gerät) auf die Wurzel anwenden – alle rem-Größen skalieren mit. */
+const THEMES = { dark: 'Dunkel', light: 'Hell', auto: 'Wie System' };
+const ACCENTS = {
+  limette: { label: 'Limette', color: '#c6f432' }, koralle: { label: 'Koralle', color: '#ff5c7a' },
+  violett: { label: 'Violett', color: '#9d8cff' }, cyan: { label: 'Cyan', color: '#2fd8f0' }, orange: { label: 'Orange', color: '#ffa53a' },
+};
+
+/** Schriftgröße, Hell/Dunkel und Akzentfarbe (pro Gerät) auf die Wurzel anwenden. */
 function applyFontSize() {
-  const fs = FONT_SIZES[store.getState().settings.fontSize] || FONT_SIZES.normal;
-  document.documentElement.style.setProperty('--fs', String(fs.scale));
+  const st = store.getState().settings;
+  const fs = FONT_SIZES[st.fontSize] || FONT_SIZES.normal;
+  const root = document.documentElement;
+  root.style.setProperty('--fs', String(fs.scale));
+  root.dataset.theme = THEMES[st.theme] ? st.theme : 'dark';
+  root.dataset.accent = ACCENTS[st.accent] ? st.accent : 'limette';
+  // Statusleiste des Handys in der Hintergrundfarbe
+  requestAnimationFrame(() => $('meta[name="theme-color"]')?.setAttribute('content', getComputedStyle(document.body).backgroundColor));
 }
 
 /** Avatar → Profile der Familie wechseln oder Profil öffnen. */
@@ -63,6 +75,41 @@ function showProfiles(p) {
   }));
 }
 
+// ---------- Start-Knopf (Tabbar-Mitte, App-Verknüpfung #/start) ----------
+/** Was ist gerade dran? Offene Challenge (passende Tageszeit zuerst), dann Programm-Einheit. */
+function nextDue(p) {
+  const today = toKey();
+  const open = (slot) => !p.sessions.some((x) => x.date === today && x.slot === slot && !x.partial);
+  const slots = new Date().getHours() >= 15 ? ['evening', 'morning'] : ['morning', 'evening'];
+  const slot = slots.find(open);
+  if (slot) return { slot };
+  if (p.program && programSession(p.program) && !p.sessions.some((x) => x.date === today && x.slot === 'program')) return { program: true };
+  return null;
+}
+
+function goNow() {
+  const p = store.activeProfile();
+  if (!p) return;
+  const due = nextDue(p);
+  if (due?.slot) startChallenge(p, due.slot);
+  else if (due?.program) startProgramSession(p);
+  else { location.hash = '#/uebungen'; toast('Alles erledigt – Lust auf mehr? Such dir ein Extra-Workout aus.', 3500); }
+}
+
+const PLAY_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>';
+const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+/** Start-Knopf zeigt ▶ (etwas offen) oder ✓ (alles erledigt). */
+function updateGoButton() {
+  const btn = $('#tab-go');
+  const p = store.activeProfile();
+  if (!btn || !p) return;
+  const due = nextDue(p);
+  btn.classList.toggle('done', !due);
+  btn.innerHTML = due ? PLAY_SVG : CHECK_SVG;
+  btn.setAttribute('aria-label', due ? `Jetzt starten: ${due.slot === 'morning' ? 'Morgen-Challenge' : due.slot === 'evening' ? 'Abend-Challenge' : 'Programm-Einheit'}` : 'Alles erledigt – Extra-Workout wählen');
+}
+$('#tab-go')?.addEventListener('click', () => { haptic(10); goNow(); });
+
 // ---------- Router ----------
 const routes = { heute: renderToday, uebungen: renderLibrary, welt: renderWorld, fortschritt: renderProgress, profil: renderProfile, neu: renderOnboarding };
 const TAB_OF = { welt: 'uebungen' };
@@ -72,6 +119,12 @@ function route() {
   if (name === 'sync') {
     location.replace('#/heute'); // Code nicht im Verlauf stehen lassen
     setTimeout(() => showJoin(arg), 50);
+    return;
+  }
+  if (name === 'start') {
+    // App-Verknüpfung „Jetzt trainieren“ (langes Drücken aufs App-Symbol)
+    location.replace('#/heute');
+    setTimeout(goNow, 300);
     return;
   }
   const p = store.activeProfile();
@@ -85,6 +138,7 @@ function route() {
   clearTimeout(enterTimer);
   enterTimer = setTimeout(() => view.classList.remove('enter'), 700);
   (routes[name] || renderToday)(p, arg);
+  updateGoButton();
   window.scrollTo(0, 0);
 }
 let currentRoute = '';
@@ -273,7 +327,7 @@ function renderToday(p) {
   }).join('');
 
   const SLOT = { morning: { label: 'Morgen', icon: 'sun', tone: 'orange' }, evening: { label: 'Abend', icon: 'moon', tone: 'violet' } };
-  const card = (slot) => {
+  const card = (slot, i) => {
     const c = challengeFor(slot, today, p);
     const d = done(slot);
     const part = d?.partial;
@@ -286,7 +340,7 @@ function renderToday(p) {
         <button class="btn ghost sm" data-start="${slot}">Nochmal</button></section>`;
     }
     const figId = c.steps.find((x) => hasFigure(x.id) && byId[x.id].cat !== 'entspannung')?.id || c.steps[0].id;
-    return `<section class="card session ${slot}">
+    return `<section class="card session ${slot}${i === 0 ? ' hero' : ''}">
       <div class="session-top">
         <div class="grow"><div class="slot-label">${ICON[SLOT[slot].icon]}${SLOT[slot].label}${p.plan?.[slot] ? `<span class="muted"> · ${esc(p.plan[slot])}</span>` : ''}</div>
           <h2>${esc(c.title)}</h2>
@@ -297,7 +351,7 @@ function renderToday(p) {
       <p class="ex-line">${ids.map((id) => esc(byId[id].name)).join(' · ')}</p>
       <div class="session-foot">
         <div class="links"><button type="button" class="link-btn" data-swap="${slot}">${ICON.swap}Anpassen</button><button type="button" class="link-btn" data-mark="${slot}">${ICON.check}Erledigt</button></div>
-        <button class="btn" data-start="${slot}">${part ? 'Ganz machen' : 'Starten'}</button>
+        <button class="btn${i === 0 ? '' : ' sm'}" data-start="${slot}">${part ? 'Ganz machen' : i === 0 ? `${ICON.play}Workout starten` : 'Starten'}</button>
       </div>
     </section>`;
   };
@@ -339,15 +393,21 @@ function renderToday(p) {
       ${p.why && !anyToday ? `<section class="card why-card">${icoTile('heart', 'green')}<div><div class="eyebrow">Dein Warum</div><b>${esc(p.why)}</b></div></section>` : ''}
       ${slots.map(card).join('')}
       ${programCard(p, today)}
-      <section class="card">
-        <div class="card-head">${icoTile('leaf', 'green')}<div class="eyebrow grow">Gewohnheit des Tages</div>
-          ${habitDone ? '' : `<button type="button" class="link-btn" id="habit-swap" aria-label="Andere Gewohnheit vorschlagen">${ICON.swap}Andere</button>`}</div>
-        <label class="check"><input type="checkbox" id="habit" ${habitDone ? 'checked' : ''}>
-          <span><b>${esc(habit.text)}</b><br><span class="small muted">${esc(habit.tip)}</span></span></label>
-      </section>
-      ${waterCard(p, today)}
+      <div class="bento">
+        ${waterTile(p, today)}
+        <a class="tile" href="#/fortschritt"><div class="tile-top"><span class="tile-label">Diese Woche</span>${icoTile('chart', 'violet')}</div>
+          <div><div class="tile-num">${wStats.minutes}<small> Min</small></div><div class="small muted">${Math.min(wStats.activeDays, goal)} von ${goal} Tagen aktiv</div></div></a>
+        <div class="tile habit wide${habitDone ? ' on' : ''}">
+          <div class="tile-top"><span class="tile-label">Gewohnheit des Tages</span>
+            ${habitDone ? '' : `<button type="button" class="link-btn" id="habit-swap" aria-label="Andere Gewohnheit vorschlagen">${ICON.swap}Andere</button>`}</div>
+          <button type="button" class="row" id="habit" aria-pressed="${habitDone}" style="background:none;border:0;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit">
+            <span class="hab-check" aria-hidden="true">${habitDone ? ICON.check : ''}</span>
+            <span><span class="tile-text">${esc(habit.text)}</span><br><span class="small muted">${esc(habit.tip)}</span></span></button>
+        </div>
+        <a class="tile action" href="#/uebungen">${icoTile('zap', 'green')}<span>Schnell trainieren</span></a>
+        <button type="button" class="tile action" id="extra">${icoTile('plus', 'orange')}<span>Bewegung eintragen</span></button>
+      </div>
       ${familyCard(p)}
-      <div class="grid2"><a class="btn soft" href="#/uebungen">${ICON.flag}Schnell trainieren</a><button class="btn soft" id="extra">${ICON.plus}Bewegung eintragen</button></div>
       <section class="card"><div class="card-head">${icoTile('bulb', 'orange')}<div class="eyebrow">Wusstest du?</div></div><p style="margin:0">${esc(tipOfDay(today))}</p></section>
       <p class="center small muted">Level ${p.level} · ${esc(L.name)} · Intensität ${Math.round(p.intensity * 100)} %</p>
     </div>`;
@@ -364,8 +424,8 @@ function renderToday(p) {
   $$('[data-start]').forEach((b) => b.addEventListener('click', () => startChallenge(p, b.dataset.start)));
   $$('[data-swap]').forEach((b) => b.addEventListener('click', () => showSwap(p, b.dataset.swap)));
   $$('[data-mark]').forEach((b) => b.addEventListener('click', () => markDone(p, b.dataset.mark)));
-  $('#habit').addEventListener('change', (e) => {
-    if (e.target.checked) { p.habits[today] = habit.id; haptic(); toast('Gut gemacht!'); } else delete p.habits[today];
+  $('#habit').addEventListener('click', () => {
+    if (!p.habits[today]) { p.habits[today] = habit.id; haptic(); toast('Gut gemacht!'); } else delete p.habits[today];
     finishUpdate(p);
     renderToday(p);
   });
@@ -401,6 +461,15 @@ let checkinEdit = false;
 
 function checkinCard(p, today) {
   const ci = checkinOf(p, today);
+  if (!ci && !checkinEdit) {
+    return `<section class="card mood-bar" id="mood-bar"><div class="q">Wie fit fühlst du dich heute?<small>Ein Tipp – wir passen die Übungen an.</small></div>
+      <div class="opts" role="group" aria-label="Energie heute">
+        <button type="button" data-energy="1" aria-label="Wenig Energie" title="Wenig Energie">😴</button>
+        <button type="button" data-energy="2" aria-label="Normal" title="Normal">🙂</button>
+        <button type="button" data-energy="3" aria-label="Viel Energie" title="Viel Energie">💪</button>
+        <button type="button" class="more" id="ci-more" aria-label="Mehr angeben (Stimmung, Beschwerden)" title="Mehr angeben">${ICON.sliders}</button>
+      </div></section>`;
+  }
   if (ci && !checkinEdit) {
     if (ci.skipped) return `<button type="button" class="card row link-card checkin-mini" id="ci-edit">${icoTile('heart', 'green')}<span class="grow">Wie geht's dir heute? <span class="muted">Eintragen</span></span><span class="chev">${ICON.chevron}</span></button>`;
     const parts = [`Energie ${ENERGY[ci.energy].toLowerCase()}`, `Stimmung ${MOOD[ci.mood].toLowerCase()}`, ...(ci.pain || []).map((r) => PAIN_LABELS[r])];
@@ -422,6 +491,15 @@ function checkinCard(p, today) {
 
 function bindCheckin(p, today) {
   $('#ci-edit')?.addEventListener('click', () => { checkinEdit = true; renderToday(p); $('#checkin [data-v]')?.focus(); });
+  $('#ci-more')?.addEventListener('click', () => { checkinEdit = true; renderToday(p); $('#checkin [data-v]')?.focus(); });
+  $$('#mood-bar [data-energy]').forEach((b) => b.addEventListener('click', () => {
+    const energy = Number(b.dataset.energy);
+    p.checkins[today] = { energy, mood: 2, pain: [], at: new Date().toISOString() };
+    haptic(8);
+    store.save();
+    renderToday(p);
+    toast(energy === 1 ? 'Danke – heute etwas leichter. Jede Bewegung zählt.' : energy === 3 ? 'Stark – dann gib heute Gas!' : 'Danke! Viel Spaß heute.', 3000);
+  }));
   const card = $('#checkin');
   if (!card) return;
   $$('[data-group="energy"] [data-v], [data-group="mood"] [data-v]', card).forEach((b) => b.addEventListener('click', () => {
@@ -478,15 +556,14 @@ function programCard(p, today) {
   </section>`;
 }
 
-function waterCard(p, today) {
+function waterTile(p, today) {
   const n = p.water[today] || 0;
   const goal = p.waterGoal;
-  return `<section class="card">
-    <div class="row spread"><div class="row">${icoTile('drop', 'blue')}<div><div class="eyebrow">Trinken</div><b>${n} von ${goal} Gläsern</b></div></div>
-      <div class="row" style="gap:8px"><button class="icon-btn" data-water="-1" aria-label="Ein Glas weniger">${ICON.minus}</button>
-      <button class="icon-btn primary" data-water="1" aria-label="Ein Glas mehr">${ICON.plus}</button></div></div>
-    <div class="glasses" aria-hidden="true">${Array.from({ length: Math.max(goal, n) }, (_, i) => `<span class="${i < n ? 'full' : 'off'}"></span>`).join('')}</div>
-  </section>`;
+  return `<div class="tile water"><div class="tile-top"><span class="tile-label">Trinken</span>${icoTile('drop', 'blue')}</div>
+    <div class="tile-row"><div class="tile-num">${n}<small>/${goal}</small></div>
+      <span class="row" style="gap:6px">${n > 0 ? `<button class="icon-btn" data-water="-1" aria-label="Ein Glas weniger">${ICON.minus}</button>` : ''}
+      <button class="icon-btn primary" data-water="1" aria-label="Ein Glas mehr (jetzt ${n} von ${goal})">${ICON.plus}</button></span></div>
+    <div class="mini-bar" aria-hidden="true"><i style="width:${Math.min(100, (n / goal) * 100)}%"></i></div></div>`;
 }
 
 function familyCard() {
@@ -716,6 +793,7 @@ function finishUpdate(p) {
   }
   const fresh = awardBadges(p);
   store.save();
+  updateGoButton();
   fresh.forEach((b, k) => setTimeout(() => toast(`${b.icon} Abzeichen: ${b.name}!`, 3500), 2400 + k * 3600));
 }
 
@@ -1154,6 +1232,17 @@ function renderProfile(p) {
         <button class="btn soft" id="ics">Kalender-Erinnerung herunterladen (.ics)</button>
       </section>
 
+      <section class="card stack"><h2>Darstellung</h2>
+        <div class="field"><span>Modus</span><div class="seg-ctl" role="radiogroup" aria-label="Hell oder dunkel">${Object.entries(THEMES).map(([k, v]) => {
+          const on = k === (THEMES[s.settings.theme] ? s.settings.theme : 'dark');
+          return `<button role="radio" aria-checked="${on}" class="${on ? 'on' : ''}" data-theme-set="${k}">${v}</button>`;
+        }).join('')}</div></div>
+        <div class="field"><span>Akzentfarbe</span><div class="swatches" role="radiogroup" aria-label="Akzentfarbe">${Object.entries(ACCENTS).map(([k, a]) => {
+          const on = k === (ACCENTS[s.settings.accent] ? s.settings.accent : 'limette');
+          return `<button type="button" role="radio" aria-checked="${on}" aria-label="${a.label}" title="${a.label}" style="--sw:${a.color}" data-accent-set="${k}"></button>`;
+        }).join('')}</div></div>
+      </section>
+
       <section class="card stack"><h2>Einstellungen</h2>
         <p class="small muted" style="margin:0">Gelten nur auf diesem Gerät.</p>
         <div class="field"><span>Schriftgröße</span><div class="seg-ctl" role="radiogroup" aria-label="Schriftgröße">${Object.entries(FONT_SIZES).map(([k, v]) => `<button role="radio" aria-checked="${k === (s.settings.fontSize || 'normal')}" class="${k === (s.settings.fontSize || 'normal') ? 'on' : ''}" data-fs="${k}">${v.label}</button>`).join('')}</div></div>
@@ -1218,6 +1307,8 @@ function renderProfile(p) {
   $('#ics').addEventListener('click', () => { saveRem(); download('aufwind-erinnerungen.ics', buildICS(p), 'text/calendar'); });
   $('#set-speech').addEventListener('change', (e) => { s.settings.speech = e.target.checked; store.save(); });
   $$('[data-fs]').forEach((b) => b.addEventListener('click', () => { s.settings.fontSize = b.dataset.fs; applyFontSize(); store.save(); renderProfile(p); $(`[data-fs="${b.dataset.fs}"]`)?.focus(); }));
+  $$('[data-theme-set]').forEach((b) => b.addEventListener('click', () => { s.settings.theme = b.dataset.themeSet; applyFontSize(); store.save(); renderProfile(p); $(`[data-theme-set="${b.dataset.themeSet}"]`)?.focus(); }));
+  $$('[data-accent-set]').forEach((b) => b.addEventListener('click', () => { s.settings.accent = b.dataset.accentSet; applyFontSize(); store.save(); renderProfile(p); $(`[data-accent-set="${b.dataset.accentSet}"]`)?.focus(); }));
   $$('[data-rest]').forEach((b) => b.addEventListener('click', () => { s.settings.rest = b.dataset.rest; store.save(); renderProfile(p); $(`[data-rest="${b.dataset.rest}"]`)?.focus(); }));
   $('#set-sound').addEventListener('change', (e) => { s.settings.sound = e.target.checked; store.save(); });
   $('#fam-goal')?.addEventListener('change', (e) => { const v = Number(e.target.value); if (v > 0) { s.settings.familyGoal = v; s.settings.familyGoalAt = new Date().toISOString(); store.save(); toast('Familienziel gespeichert'); } });

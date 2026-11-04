@@ -146,11 +146,14 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false, h
   }
 
   function header() {
-    const pct = Math.round((idx / steps.length) * 100);
+    // Fortschritt als Segmente (eins je Übung) – zeigt auf einen Blick, wie viel noch kommt
+    const segs = steps.length <= 40
+      ? `<div class="seg-progress" aria-hidden="true">${steps.map((_, i) => `<i class="${i < idx || (i === idx && phase === 'rest') ? 'done' : i === idx ? 'cur' : ''}"></i>`).join('')}</div>`
+      : `<div class="progressbar" style="margin:12px 0 0"><i style="width:${Math.round((idx / steps.length) * 100)}%"></i></div>`;
     return `<div class="row spread"><button class="icon-btn" data-act="quit" aria-label="Beenden">${ICON.close}</button>
       <span class="muted small">${Math.min(idx + 1, steps.length)} / ${steps.length}${challenge.rounds > 1 ? ` · Runde ${steps[Math.min(idx, steps.length - 1)].round}/${challenge.rounds}` : ''}</span>
       <button class="icon-btn" data-act="back" aria-label="${phase === 'rest' || idx > 0 ? 'Zurück zur vorigen Übung' : 'Übung neu starten'}">${ICON.back}</button></div>
-      <div class="progressbar" style="margin:12px 0 0"><i style="width:${pct}%"></i></div>`;
+      ${segs}`;
   }
 
   function render() {
@@ -169,6 +172,7 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false, h
           : `<div class="warn small" style="text-align:left">Bewege dich in deinem Tempo. Du solltest noch sprechen können.
         Bei Schmerzen, Brustenge oder Schwindel sofort aufhören.</div>`}`;
       controls = `<button class="btn block" data-act="start">Los geht's</button>`;
+      body += '<p class="swipe-hint">Tipp: Im Workout nach links wischen = weiter, nach rechts = zurück.</p>';
     } else if (phase === 'work') {
       const timed = ex.unit === 'sek';
       body = `${hasFigure(ex.id) ? '<div class="fig-stage" id="fig"></div>' : `<div class="ex-icon">${ex.icon}</div>`}
@@ -214,6 +218,7 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false, h
         <button class="btn ghost" data-act="discard">${canSave ? 'Verwerfen' : 'Beenden'}</button></div>`;
     }
 
+    root.classList.toggle('resting', phase === 'rest');
     root.innerHTML = `${phase === 'done' || phase === 'intro' || quitting ? `<div class="row"><button class="icon-btn" data-act="${quitting ? 'resume' : 'quit'}" aria-label="${quitting ? 'Zurück zur Übung' : 'Schließen'}">${ICON.close}</button></div>` : header()}
       <div class="player-body">${body}</div><div class="player-controls">${controls}</div>`;
     const stage = root.querySelector('#fig');
@@ -330,6 +335,21 @@ export function runPlayer(challenge, settings, onDone, { allowPartial = false, h
       onDone({ feedback: 'passt', durationSec, partial: true, doneSteps, done: doneList() });
     }
   });
+
+  // Wischen: nach links = weiter/überspringen, nach rechts = zurück (nur während Übung und Pause)
+  let touchX = null, touchY = 0;
+  root.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse') { touchX = e.clientX; touchY = e.clientY; } });
+  root.addEventListener('pointerup', (e) => {
+    if (touchX == null) return;
+    const dx = e.clientX - touchX, dy = e.clientY - touchY;
+    touchX = null;
+    if (quitting || (phase !== 'work' && phase !== 'rest') || Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.7) return;
+    haptic(10);
+    if (dx < 0) next(phase === 'work');
+    else { clearInterval(timer); if (phase === 'work' && idx > 0) idx--; enterWork(); }
+    root.querySelector('.player-body')?.classList.add(dx < 0 ? 'swipe-l' : 'swipe-r');
+  });
+  root.addEventListener('pointercancel', () => { touchX = null; });
 
   render();
   root.querySelector('[data-act="start"]')?.focus();
