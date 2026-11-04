@@ -3,7 +3,7 @@
 // für Hände/Füße fest; Knie und Ellbogen werden berechnet. Koordinaten: viewBox 200×200, Boden y = 185.
 import { POSES } from './data/poses.js';
 
-const L = { torso: 50, thigh: 42, shin: 42, upper: 30, fore: 28, head: 11, neck: 14 };
+const L = { torso: 50, thigh: 42, shin: 42, upper: 30, fore: 28, head: 12, neck: 14 };
 const rad = (d) => (d * Math.PI) / 180;
 const NS = 'http://www.w3.org/2000/svg';
 
@@ -133,14 +133,22 @@ function draw(svg, s) {
   const [farLeg, nearLeg] = s.legs;
   const [farArm, nearArm] = s.arms;
   const footMode = front ? 'front' : 'side';
+  // Bodenschatten unter dem Körper (Breite aus den tiefsten Punkten) – gibt der Figur Stand und Volumen
+  const low = [...s.legs.map((l) => l[2]), ...s.arms.map((a) => a[2]), s.p].filter((pt) => pt[1] > 165);
+  const sx = low.length ? low.map((pt) => pt[0]) : [s.p[0]];
+  const sMin = Math.min(...sx) - 14, sMax = Math.max(...sx) + 14;
+  const torso = `M${s.p[0].toFixed(1)} ${s.p[1].toFixed(1)} L${s.neck[0].toFixed(1)} ${s.neck[1].toFixed(1)}`;
   parts.innerHTML = `
+    <ellipse class="shadow" cx="${((sMin + sMax) / 2).toFixed(1)}" cy="186" rx="${((sMax - sMin) / 2).toFixed(1)}" ry="4"/>
     <path class="limb ${front ? '' : 'far'}" d="${limbPath(farLeg, footMode, s.tip)}"/>
     <path class="limb ${front ? '' : 'far'}" d="${limbPath(farArm)}"/>
-    <path class="torso" d="M${s.p[0].toFixed(1)} ${s.p[1].toFixed(1)} L${s.neck[0].toFixed(1)} ${s.neck[1].toFixed(1)}"/>
+    <path class="torso" d="${torso}"/>
     ${front ? `<path class="torso thin" d="M${farLeg[0][0].toFixed(1)} ${farLeg[0][1].toFixed(1)} L${nearLeg[0][0].toFixed(1)} ${nearLeg[0][1].toFixed(1)} M${farArm[0][0].toFixed(1)} ${farArm[0][1].toFixed(1)} L${nearArm[0][0].toFixed(1)} ${nearArm[0][1].toFixed(1)}"/>` : ''}
     <path class="limb" d="${limbPath(nearLeg, footMode, s.tip)}"/>
     <path class="limb" d="${limbPath(nearArm)}"/>
-    <circle class="head" cx="${s.head[0].toFixed(1)}" cy="${s.head[1].toFixed(1)}" r="${L.head}"/>${gearSVG(s.hold, s)}`;
+    <path class="shine" d="${torso}"/>
+    <circle class="head" cx="${s.head[0].toFixed(1)}" cy="${s.head[1].toFixed(1)}" r="${L.head}"/>
+    <circle class="head-shine" cx="${(s.head[0] - 3.5).toFixed(1)}" cy="${(s.head[1] - 3.5).toFixed(1)}" r="3.5"/>${gearSVG(s.hold, s)}`;
 }
 
 /**

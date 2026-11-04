@@ -1,8 +1,11 @@
 // Trainingswelten: Themen mit eigener Seite, Erklärung, Sicherheits-Hinweisen und Kurz-Workouts (Schwerpunkt aus focus.js).
 
+/** Bild je Welt: Figur einer typischen Übung (Schlüsselpose) in der Weltfarbe. */
+export const TONE_COLOR = { violet: 'var(--sky)', green: 'var(--primary)', orange: 'var(--accent)', blue: 'var(--water)', red: 'var(--danger)' };
+
 export const WORLDS = {
   beckenboden: {
-    focus: 'beckenboden', icon: 'flower', tone: 'violet',
+    focus: 'beckenboden', icon: 'flower', tone: 'violet', art: ['bb_ruecken', 1],
     title: 'Beckenboden',
     teaser: 'Stärkt die Mitte, schützt vor Blasenschwäche – für Frauen und Männer.',
     intro: 'Der Beckenboden ist eine Muskelschicht, die wie eine Hängematte unten im Becken liegt. Er hält Blase und Darm dicht, stützt die Organe und arbeitet mit Rücken- und Bauchmuskeln zusammen. Regelmäßiges Training kann Blasenschwäche vorbeugen und lindern – in jedem Alter.',
@@ -19,7 +22,7 @@ export const WORLDS = {
     ],
   },
   ruecken: {
-    focus: 'ruecken', icon: 'spine', tone: 'green',
+    focus: 'ruecken', icon: 'spine', tone: 'green', art: ['vierfuessler', 1],
     title: 'Rücken',
     teaser: 'Beweglich bleiben, Haltung stärken – gegen Verspannungen vom Sitzen.',
     intro: 'Die meisten Rückenschmerzen sind „unspezifisch“ – und Bewegung ist dann das beste Mittel. Beweglichkeit lockert, Kraft für Rumpf und Schultern stützt. Schonen dagegen macht es oft schlimmer.',
@@ -36,7 +39,7 @@ export const WORLDS = {
     ],
   },
   kraft: {
-    focus: 'kraft', icon: 'dumbbell', tone: 'orange',
+    focus: 'kraft', icon: 'dumbbell', tone: 'orange', art: ['bodenliegestuetz', 0],
     title: 'Kraft',
     teaser: 'Vom Liegestütz an der Wand bis zum Archer-Liegestütz und Klimmzug – Schritt für Schritt.',
     intro: 'Muskeln sind in jedem Alter trainierbar. Kraft schützt die Gelenke, hält den Stoffwechsel in Schwung und macht dich leistungsfähiger. Die Übungen steigern sich vom Stuhl über Tisch und Boden bis zu einbeinigen und explosiven Varianten – mit Geräten, wenn du welche hast.',
@@ -53,7 +56,7 @@ export const WORLDS = {
     ],
   },
   hiit: {
-    focus: 'hiit', icon: 'zap', tone: 'red', minLevel: 4,
+    focus: 'hiit', icon: 'zap', tone: 'red', minLevel: 4, art: ['bergsteigerboden', 0],
     title: 'Intervalle (HIIT)',
     teaser: 'Kurz, hart, effektiv: Belastung auf Zeit, kurze Pausen – maximaler Puls.',
     intro: 'Beim hochintensiven Intervalltraining wechseln sich kurze, harte Belastungen mit kurzen Pausen ab. Das trainiert Herz, Kreislauf und Kraftausdauer in wenig Zeit. Jede Übung läuft auf Zeit – du machst so viele saubere Wiederholungen wie möglich.',
@@ -70,7 +73,7 @@ export const WORLDS = {
     ],
   },
   sprung: {
-    focus: 'sprung', icon: 'rocket', tone: 'orange', minLevel: 6,
+    focus: 'sprung', icon: 'rocket', tone: 'orange', minLevel: 6, art: ['sprungkniebeuge', 1],
     title: 'Sprungkraft',
     teaser: 'Plyometrie: Burpees, Sprungkniebeugen, Skater – Schnellkraft und Puls.',
     intro: 'Sprungtraining (Plyometrie) macht Muskeln explosiv: Sie lernen, Kraft in kürzester Zeit zu entwickeln. Das bringt dich beim Laufen, im Sport und im Alltag weiter – und treibt den Puls hoch.',
@@ -87,7 +90,7 @@ export const WORLDS = {
     ],
   },
   geraete: {
-    focus: 'geraete', icon: 'dumbbell', tone: 'blue', equip: true,
+    focus: 'geraete', icon: 'dumbbell', tone: 'blue', equip: true, art: ['kb_swing', 1],
     title: 'Mit Geräten',
     teaser: 'Kurzhanteln, Kettlebell, Klimmzugstange, Band – mehr Reize für Fortgeschrittene.',
     intro: 'Mit ein paar Geräten zu Hause wird Krafttraining vielseitiger: Zug-Übungen für den Rücken, mehr Gewicht für die Beine, Kettlebell-Swings für Kraftausdauer. Welche Geräte du hast, stellst du im Profil ein – dann tauchen die passenden Übungen auch in deinen täglichen Challenges auf.',

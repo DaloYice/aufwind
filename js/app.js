@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import { $, $$, esc, toast, undoToast, openSheet, closeSheet, fmtAmount, download } from './ui.js';
 import { runPlayer } from './player.js';
-import { lineChart } from './chart.js';
+import { lineChart, sparkline } from './chart.js';
 import { toKey, addDays, fromKey, formatDate } from './core/dates.js';
 import { LEVELS, QUESTIONS, HEALTH_FLAGS, assess, bmi, bmiClass } from './core/assessment.js';
 import { challengeFor, habitOfDay, swapHabit, tipOfDay, exerciseSeconds, canSwap, swapExercise } from './core/challenges.js';
@@ -10,7 +10,7 @@ import { customWorkout } from './core/custom.js';
 import { recordExercises, exStats } from './core/exlog.js';
 import { checkinOf } from './core/checkin.js';
 import { FOCUS, QUICK_MINUTES, PAIN_LABELS, focusAvailable } from './data/focus.js';
-import { WORLDS, DIFFICULTY } from './data/worlds.js';
+import { WORLDS, DIFFICULTY, TONE_COLOR } from './data/worlds.js';
 import { addSession, updateSession, removeSession, restoreSession } from './core/records.js';
 import { streak, adjustIntensity, levelSuggestion, awardBadges, BADGES } from './core/progress.js';
 import { weekStart, weekStats, weekGoal, reviewDue, suggestGoal, reviewMessage, familyProgress, defaultFamilyGoal } from './core/week.js';
@@ -23,7 +23,7 @@ import { formatCode } from './core/syncdata.js';
 import { renderDashboard, bindTips } from './dashboard.js';
 import { startReminders, enableNotifications, notifySupported } from './reminders.js';
 
-const VERSION = '0.9.0';
+const VERSION = '0.10.0';
 const SLOT_NAMES = { morning: 'Morgen-Challenge', evening: 'Abend-Challenge', program: 'Programm', extra: 'Andere Bewegung', custom: 'Training nach Wunsch' };
 const view = $('#view');
 const tabbar = $('#tabbar');
@@ -891,7 +891,7 @@ const worldWish = {};
 
 function worldsHTML(p) {
   return `<h2 style="margin:28px 0 12px">Trainingswelten</h2>
-    <div class="ex-list">${Object.entries(WORLDS).filter(([, w]) => !w.minLevel || atDifficulty(p).level >= w.minLevel).map(([id, w]) => `<a class="card row link-card world-card" href="#/welt/${id}">${icoTile(w.icon, w.tone)}
+    <div class="ex-list">${Object.entries(WORLDS).filter(([, w]) => !w.minLevel || atDifficulty(p).level >= w.minLevel).map(([id, w]) => `<a class="card row link-card world-card" href="#/welt/${id}"><span class="world-art" style="--wc:${TONE_COLOR[w.tone]}" data-art="${w.art[0]}" data-key="${w.art[1]}" aria-hidden="true"></span>
       <span class="grow"><b>${esc(w.title)}</b><br><span class="small muted">${esc(w.teaser)}</span></span><span class="chev">${ICON.chevron}</span></a>`).join('')}</div>`;
 }
 
@@ -908,7 +908,8 @@ function renderWorld(p, id) {
     .sort((a, b) => (a.base.findIndex((v) => v != null) - b.base.findIndex((v) => v != null)));
   const short = (ex, n) => (ex.unit === 'wdh' ? `${n}×` : `${n} s`);
   view.innerHTML = `<a class="link-btn back-link" href="#/uebungen">${ICON.back}Übungen</a>
-    <header class="world-head">${icoTile(w.icon, w.tone)}<div><div class="eyebrow">Trainingswelt</div><h1>${esc(w.title)}</h1></div></header>
+    <header class="world-banner" style="--wc:${TONE_COLOR[w.tone]}"><span data-art="${w.art[0]}" data-key="${w.art[1]}" data-size="190" aria-hidden="true"></span>
+      <div class="wb-text">${icoTile(w.icon, w.tone)}<div class="eyebrow">Trainingswelt</div><h1>${esc(w.title)}</h1></div></header>
     <div class="stack">
       <section class="card"><p style="margin:0 0 12px">${esc(w.intro)}</p><ul class="points">${w.points.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
       ${w.safety ? `<div class="warn small"><b>Wichtig:</b> ${esc(w.safety)}</div>` : ''}
@@ -917,13 +918,25 @@ function renderWorld(p, id) {
       <section class="card"><h3>Übungen</h3><ul class="log-list world-ex">${exs.map((e) => {
         const st = exStats(p, e.id);
         const from = e.base.findIndex((v) => v != null) + 1;
-        return `<li><button type="button" data-ex="${e.id}"><span class="ex-ico">${e.icon}</span><span class="grow"><b>${esc(e.name)}</b><br>
+        return `<li><button type="button" data-ex="${e.id}">${thumb(e, 'ex-ico')}<span class="grow"><b>${esc(e.name)}</b><br>
           <span class="small muted">${e.base[lvl - 1] != null ? esc(fmtAmount(e, e.base[lvl - 1])) : `ab Level ${from}`}${gearLabel(e)}${st ? ` · Bestwert ${short(e, st.best)}` : ''}</span></span><span class="chev">${ICON.chevron}</span></button></li>`;
       }).join('')}</ul></section>
       <section class="card"><div class="card-head">${icoTile('bulb', 'orange')}<div class="eyebrow">Tipps</div></div><ul class="points">${w.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>
     </div>`;
   if (!noGear) bindPicker(p, wish, c, () => renderWorld(p, id));
+  drawThumbs();
   $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex)));
+}
+
+/** Kleines Figurenbild einer Übung (statt Emoji); gezeichnet wird es nach dem Einfügen von drawThumbs(). */
+function thumb(e, cls) {
+  return hasFigure(e.id) ? `<span class="${cls} fig-thumb" data-thumb="${e.id}" aria-hidden="true"></span>` : `<span class="${cls}">${e.icon}</span>`;
+}
+
+/** Alle Vorschaubilder und Welt-Bilder im Bereich zeichnen. */
+function drawThumbs(root = view) {
+  $$('[data-thumb]', root).forEach((el) => { if (!el.firstChild) renderStatic(el, el.dataset.thumb, 1, 52); });
+  $$('[data-art]', root).forEach((el) => { if (!el.firstChild) renderStatic(el, el.dataset.art, Number(el.dataset.key), Number(el.dataset.size) || 84); });
 }
 
 /** „ · Kurzhanteln/Kettlebell“ bzw. „ · Sprung“ für Übungslisten. */
@@ -951,15 +964,16 @@ function renderLibrary(p) {
     <div class="filters" role="toolbar" aria-label="Filter">
       <button data-mine class="${libFilter.mine ? 'on' : ''}" aria-pressed="${libFilter.mine}">${difficulty ? DIFFICULTY[difficulty].label : 'Mein Level'}</button>
       <button data-cat="" class="${!libFilter.cat ? 'on' : ''}">Alle Bereiche</button>
-      ${Object.entries(CATEGORIES).map(([k, c]) => `<button data-cat="${k}" class="${libFilter.cat === k ? 'on' : ''}">${c.icon} ${c.label}</button>`).join('')}
+      ${Object.entries(CATEGORIES).map(([k, c]) => `<button data-cat="${k}" class="${libFilter.cat === k ? 'on' : ''}"><i class="cat-dot" style="--c:var(--cat-${k})"></i> ${c.label}</button>`).join('')}
     </div>
     <p class="small muted">${list.length} Übungen${libFilter.mine ? ` für Level ${lvl}` : ''}</p>
-    <div class="ex-list">${list.map((e) => `<button class="ex-item" data-ex="${e.id}"><span class="ico">${e.icon}</span>
+    <div class="ex-list">${list.map((e) => `<button class="ex-item" data-ex="${e.id}">${thumb(e, 'ico')}
       <span style="flex:1"><b>${esc(e.name)}</b><br><span class="small muted">${CATEGORIES[e.cat].label} · ${POSITIONS[e.pos]}${esc(gearLabel(e))}</span></span>
       <span class="small muted">${e.base[lvl - 1] != null ? esc(fmtAmount(e, e.base[lvl - 1])) : `ab L${e.base.findIndex((v) => v != null) + 1}`}</span></button>`).join('')}</div>`;
 
   $('[data-mine]').addEventListener('click', () => { libFilter.mine = !libFilter.mine; renderLibrary(p); });
   bindPicker(p, quick, qc, () => renderLibrary(p));
+  drawThumbs();
   $$('[data-cat]').forEach((b) => b.addEventListener('click', () => { libFilter.cat = b.dataset.cat; renderLibrary(p); }));
   $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex)));
   $$('[data-prog]').forEach((b) => b.addEventListener('click', () => showProgram(p, b.dataset.prog)));
@@ -1012,10 +1026,10 @@ function showExercise(p, id) {
   const short = (n) => (e.unit === 'wdh' ? `${n}×` : `${n} s`);
   const tile = (v, l) => `<div class="stat"><b>${v}</b><span class="small muted">${l}</span></div>`;
   const levels = e.base.map((v, k) => (v != null ? `<span class="chip">L${k + 1}: ${esc(fmtAmount(e, v))}</span>` : '')).join('');
-  const sheet = openSheet(`<div class="row spread"><span style="font-size:2rem">${e.icon}</span><button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
+  const sheet = openSheet(`<div class="row spread">${hasFigure(id) ? `<span class="eyebrow">${esc(CATEGORIES[e.cat].label)}</span>` : `<span style="font-size:2rem">${e.icon}</span>`}<button class="icon-btn" data-close aria-label="Schließen">${ICON.close}</button></div>
     ${hasFigure(id) ? '<div class="fig-stage" id="ex-fig" style="margin-bottom:12px"></div>' : ''}
     <h2>${esc(e.name)}</h2>
-    <p class="muted small">${CATEGORIES[e.cat].icon} ${CATEGORIES[e.cat].label} · ${POSITIONS[e.pos]}${e.perSide ? ' · je Seite' : ''}${esc(gearLabel(e))}</p>
+    <p class="muted small"><i class="cat-dot" style="--c:var(--cat-${e.cat})"></i> ${CATEGORIES[e.cat].label} · ${POSITIONS[e.pos]}${e.perSide ? ' · je Seite' : ''}${esc(gearLabel(e))}</p>
     <h3>So geht's</h3><ol class="steps">${e.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
     <div class="banner small"><b>💡 Tipp:</b> ${esc(e.tip)}</div>
     <div class="grid2" style="margin-top:12px">
@@ -1120,16 +1134,19 @@ function renderProgress(p) {
       .sort((a, b) => b.lastDate.localeCompare(a.lastDate));
     const short = (ex, n) => (ex.unit === 'wdh' ? `${n}×` : `${n} s`);
     body = rows.length ? `<p class="small muted">Deine beste Menge je Übung in einem Durchgang. Wiederholungen kannst du im Training mit − und + anpassen.</p>
-      <div class="ex-list">${rows.map((r) => {
+      <div class="records">${rows.map((r) => {
         const ex = byId[r.id];
-        return `<button class="ex-item" data-ex="${r.id}"><span class="ico">${ex.icon}</span>
-          <span class="grow"><b>${esc(ex.name)}</b><br><span class="small muted">an ${r.days} ${r.days === 1 ? 'Tag' : 'Tagen'} · zuletzt ${formatDate(r.lastDate)}${r.last < r.best ? ` (${short(ex, r.last)})` : ''}</span></span>
-          <span class="best"><b>${short(ex, r.best)}</b><span class="small muted">Bestwert</span></span></button>`;
+        const first = r.list[0].best;
+        const gain = r.best - first;
+        return `<button class="record" data-ex="${r.id}"><span class="rec-top">${thumb(ex, 'rec-fig')}<span class="rec-name">${esc(ex.name)}</span></span>
+          <span class="rec-num">${r.best}<small>${ex.unit === 'wdh' ? ' Wdh.' : ' Sek'}</small></span>
+          ${r.list.length > 1 ? sparkline(r.list.map((x) => x.best), { label: `Verlauf ${ex.name}` }) : ''}
+          ${gain > 0 ? `<span class="trend-pill up">▲ ${gain} seit Start</span>` : `<span class="small muted">an ${r.days} ${r.days === 1 ? 'Tag' : 'Tagen'}</span>`}</button>`;
       }).join('')}</div>` : '<section class="card"><p class="muted" style="margin:0">Noch keine Bestwerte. Sobald du Übungen im Training machst, siehst du hier, was du schon schaffst – und wie es mehr wird.</p></section>';
   } else {
     body = `<p class="muted">${earned} von ${BADGES.length} Abzeichen verdient.</p><div class="badges">${BADGES.map((b) => {
       const got = p.badges?.[b.id];
-      return `<div class="badge ${got ? '' : 'locked'}" title="${esc(b.desc)}"><span class="ico">${b.icon}</span><b>${esc(b.name)}</b><br><span class="muted">${got ? formatDate(got) : esc(b.desc)}</span></div>`;
+      return `<div class="badge ${got ? '' : 'locked'}${got && got === toKey() ? ' fresh' : ''}" style="--m:${medalColor(b.id)}" title="${esc(b.desc)}">${medal(b.icon)}<b>${esc(b.name)}</b><span class="small muted">${got ? formatDate(got) : esc(b.desc)}</span></div>`;
     }).join('')}</div>`;
   }
   view.innerHTML = `<h1>Fortschritt</h1>
@@ -1143,7 +1160,25 @@ function renderProgress(p) {
     $('#sess-all')?.addEventListener('click', () => { showAllSessions = !showAllSessions; renderProgress(p); });
   }
   if (progTab === 'werte') { bindMeasurements(p); bindTips(view); }
-  if (progTab === 'rekorde') $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex)));
+  if (progTab === 'rekorde') { $$('[data-ex]').forEach((b) => b.addEventListener('click', () => showExercise(p, b.dataset.ex))); drawThumbs(); }
+}
+
+/** Medaillen-Farbe je Abzeichen-Gruppe. */
+function medalColor(id) {
+  if (/^serie|fruehaufsteher|abendroutine|doppelpack/.test(id)) return '#ff9f43';
+  if (/^minus|bauch|messen/.test(id)) return 'var(--water)';
+  if (/gewohnheit|wasser/.test(id)) return 'var(--cat-ausdauer)';
+  if (/wochenziel|programm|aufstieg/.test(id)) return 'var(--sky)';
+  return 'var(--primary)';
+}
+
+/** Medaille: Band, Rand, Fläche, Glanz und Symbol. */
+function medal(icon) {
+  return `<svg class="medal" viewBox="0 0 64 72" aria-hidden="true">
+    <path class="ribbon" d="M18 0h12l6 18H24zM34 0h12l-6 18H28z"/>
+    <circle class="rim" cx="32" cy="42" r="26"/><circle class="face" cx="32" cy="42" r="20"/>
+    <path class="gloss" d="M14 34a20 20 0 0 1 30-14 24 24 0 0 0-28 18z"/>
+    <text x="32" y="50" text-anchor="middle">${icon}</text></svg>`;
 }
 
 function measurementsHTML(p) {
@@ -1156,7 +1191,7 @@ function measurementsHTML(p) {
   return `<section class="card">
     <div class="filters">${Object.entries(LOG_KINDS).map(([key, v]) => `<button data-kind="${key}" class="${key === logKind ? 'on' : ''}">${v.icon} ${v.label}</button>`).join('')}</div>
     ${delta != null ? `<p><b>${delta > 0 ? '+' : ''}${delta} ${k.unit}</b> <span class="muted small">seit ${formatDate(entries[0].date)}</span>${curBmi ? ` · <span class="small">BMI ${curBmi} (${esc(bmiClass(curBmi))})</span>` : ''}</p>` : ''}
-    ${lineChart(entries, { unit: k.unit })}
+    ${lineChart(entries, { unit: k.unit, trend: logKind === 'weight' })}
     <form id="log-form" class="row" style="margin-top:12px">
       <input type="number" id="log-val" inputmode="decimal" step="${k.step}" min="0" placeholder="${k.label} (${k.unit})" required aria-label="${k.label}" style="flex:1;min-width:0">
       <input type="date" id="log-date" value="${toKey()}" max="${toKey()}" aria-label="Datum" style="max-width:150px">

@@ -4,7 +4,8 @@ import { addDays, formatDate, fromKey, toKey } from './core/dates.js';
 import { weekStart, weekStats, weekGoal } from './core/week.js';
 import { streak } from './core/progress.js';
 import { CATEGORIES } from './data/exercises.js';
-import { lineChart } from './chart.js';
+import { lineChart, sparkline } from './chart.js';
+import { icoTile, ICON } from './icons.js';
 
 const W = 360; // ≈ Handybreite, damit 11px-Beschriftungen auch wirklich ~11px groß sind
 const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -51,14 +52,46 @@ function kpis(p, today) {
   const delta = cur.minutes - prev.minutes;
   const w = p.logs?.weight || [];
   const wd = w.length > 1 ? Math.round((w.at(-1).value - w[0].value) * 10) / 10 : null;
-  const st = streak(p, today).count;
-  const tile = (label, value, sub) => `<div class="stat"><span class="small muted">${label}</span><b>${value}</b><span class="small muted">${sub}</span></div>`;
+  const st = streak(p, today);
+  const goal = weekGoal(p, ws);
+  const weeks = Array.from({ length: 8 }, (_, i) => weekStats(p, addDays(ws, (i - 7) * 7)).minutes);
+  const tile = (label, icon, tone, value, extra) => `<div class="stat"><div class="kpi-head"><span class="small muted">${label}</span>${icoTile(icon, tone)}</div><b>${value}</b>${extra}</div>`;
+  const pill = (up, text) => `<span class="trend-pill ${up ? 'up' : ''}">${up ? '▲' : '▼'} ${text}</span>`;
   return `<div class="kpis">
-    ${tile('Serie', `${st}`, st === 1 ? 'Tag' : 'Tage')}
-    ${tile('Diese Woche', `${cur.minutes}`, `Min · ${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)} zur Vorwoche`)}
-    ${tile('Aktive Tage', `${cur.activeDays}`, cur.reached ? `🎯 Ziel ${weekGoal(p, ws)} erreicht` : `von ${weekGoal(p, ws)} als Wochenziel`)}
-    ${tile('Gewicht', wd == null ? '–' : `${wd > 0 ? '+' : ''}${wd}`, wd == null ? 'noch zu wenig Daten' : 'kg seit Start')}
+    ${tile('Serie', 'flame', 'orange', `${st.count}<small>${st.count === 1 ? 'Tag' : 'Tage'}</small>`,
+      `<span class="small muted">${st.jokerAvailable ? 'Joker frei' : 'Joker genutzt'} · Rekord ${Math.max(p.bestStreak || 0, st.count)}</span>`)}
+    ${tile('Diese Woche', 'chart', 'green', `${cur.minutes}<small>Min</small>`,
+      `${sparkline(weeks, { label: 'Minuten der letzten 8 Wochen' })}${pill(delta >= 0, `${Math.abs(delta)} zur Vorwoche`)}`)}
+    ${tile('Aktive Tage', 'check', 'violet', `${cur.activeDays}<small>/${goal}</small>`,
+      `<div class="goal-pips" aria-hidden="true">${Array.from({ length: goal }, (_, k) => `<i class="${k < cur.activeDays ? 'on' : ''}"></i>`).join('')}</div>
+      <span class="small muted">${cur.reached ? 'Wochenziel erreicht' : `noch ${goal - cur.activeDays} bis zum Ziel`}</span>`)}
+    ${tile('Gewicht', 'drop', 'blue', wd == null ? '–' : `${wd > 0 ? '+' : ''}${wd}<small>kg</small>`,
+      wd == null ? '<span class="small muted">noch zu wenig Daten</span>' : `${sparkline(w.slice(-12).map((e) => e.value), { label: 'Gewicht, letzte Einträge' })}<span class="small muted">seit Start</span>`)}
   </div>`;
+}
+
+// ---------- Aktivitätsringe: Bewegen, Aktive Tage, Gewohnheiten (diese Woche) ----------
+function rings(p, today) {
+  const ws = weekStart(today);
+  const cur = weekStats(p, ws);
+  const goal = weekGoal(p, ws);
+  const daysSoFar = Math.min(7, Math.round((fromKey(today) - fromKey(ws)) / 864e5) + 1);
+  const data = [
+    { label: 'Bewegen', value: cur.minutes, goal: 150, unit: 'Min', color: 'var(--ring-1)' },
+    { label: 'Aktive Tage', value: cur.activeDays, goal, unit: 'Tage', color: 'var(--ring-2)' },
+    { label: 'Gewohnheiten', value: cur.habits, goal: 7, unit: 'Tage', color: 'var(--ring-3)' },
+  ];
+  const R = [56, 41, 26];
+  const arcs = data.map((d, i) => {
+    const c = 2 * Math.PI * R[i];
+    const f = Math.min(1, d.value / d.goal);
+    return `<circle class="track" cx="66" cy="66" r="${R[i]}" stroke="${d.color}" stroke-width="12"/>
+      ${f > 0 ? `<circle class="arc" cx="66" cy="66" r="${R[i]}" stroke="${d.color}" stroke-width="12" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - f)).toFixed(1)}" style="--full:${c.toFixed(1)}"/>` : ''}`;
+  }).join('');
+  const rows = data.map((d) => `<div class="ring-row"><i class="cat-dot" style="--c:${d.color}"></i><span class="lbl-t">${d.label}</span>
+    <b>${d.value}<small> / ${d.goal} ${d.unit}</small></b></div>`).join('');
+  return `<section class="card rings-card viz"><svg class="rings" viewBox="0 0 132 132" role="img" aria-label="${esc(data.map((d) => `${d.label} ${d.value} von ${d.goal} ${d.unit}`).join(', '))}">${arcs}</svg>
+    <div class="ring-rows"><div class="eyebrow">Diese Woche · Tag ${daysSoFar} von 7</div>${rows}</div></section>`;
 }
 
 // ---------- Wochenminuten (Säulen + WHO-Linie) ----------
@@ -76,7 +109,8 @@ function weeklyMinutes(p, today) {
       const x = pad.l + i * slot + 1;
       const tip = `Woche ab ${formatDate(w.start)}: ${w.minutes} Min, ${w.sessions} Einheiten, ${w.activeDays} aktive Tage`;
       return `<g class="hit" data-tip="${esc(tip)}"><rect x="${x - 1}" y="${pad.t}" width="${slot}" height="${H - pad.t - pad.b}" fill="transparent"/>
-        <path class="bar ${i === 11 ? 'cur' : ''}" d="${colPath(x, y(w.minutes), bw, y(0) - y(w.minutes))}"/></g>`;
+        <path class="bar ${i === 11 ? 'cur' : 'past'}" d="${colPath(x, y(w.minutes), bw, y(0) - y(w.minutes))}"/>
+        ${i === 11 && w.minutes ? `<text class="val" x="${x + bw / 2}" y="${y(w.minutes) - 6}" text-anchor="middle">${w.minutes}</text>` : ''}</g>`;
     }).join('')}
     <line class="ref" x1="${pad.l}" x2="${W - pad.r}" y1="${y(150)}" y2="${y(150)}"/>
     <text class="lbl ref-lbl" x="${W - pad.r}" y="${y(150) - 5}" text-anchor="end">WHO-Ziel 150</text>
@@ -130,17 +164,18 @@ function focus(p, today) {
     if (s.cats) for (const [c, sec] of Object.entries(s.cats)) sums[c] = (sums[c] || 0) + sec / 60;
     else other += (s.durationSec || 0) / 60;
   }
-  const rows = Object.entries(sums).map(([c, m]) => ({ label: `${CATEGORIES[c].icon} ${CATEGORIES[c].label}`, value: Math.round(m) }));
-  if (other >= 1) rows.push({ label: '➕ Sonstiges', value: Math.round(other) });
+  const rows = Object.entries(sums).map(([c, m]) => ({ label: CATEGORIES[c].label, color: `var(--cat-${c})`, value: Math.round(m) }));
+  if (other >= 1) rows.push({ label: 'Sonstiges', color: 'var(--muted)', value: Math.round(other) });
   const max = Math.max(1, ...rows.map((r) => r.value));
   const rowH = 30, labelW = 118, valW = 54, H = rows.length * rowH;
   const bw = W - labelW - valW;
   const svg = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Minuten je Trainingsbereich, letzte 30 Tage">
     ${rows.map((r, i) => `<g class="hit" data-tip="${esc(`${r.label}: ${r.value} Min`)}">
       <rect x="0" y="${i * rowH}" width="${W}" height="${rowH}" fill="transparent"/>
-      <text class="lbl strong" x="0" y="${i * rowH + 19}">${esc(r.label)}</text>
+      <circle cx="5" cy="${i * rowH + 15}" r="5" fill="${r.color}"/>
+      <text class="lbl strong" x="16" y="${i * rowH + 19}">${esc(r.label)}</text>
       <rect class="track" x="${labelW}" y="${i * rowH + 8}" width="${bw}" height="14" rx="4"/>
-      <path class="bar" d="${barPath(labelW, i * rowH + 8, (r.value / max) * bw, 14)}"/>
+      <path class="cat-bar" style="--c:${r.color}" d="${barPath(labelW, i * rowH + 8, (r.value / max) * bw, 14)}"/>
       <text class="lbl" x="${W}" y="${i * rowH + 19}" text-anchor="end">${r.value} Min</text></g>`).join('')}
   </svg>`;
   const total = rows.reduce((t, r) => t + r.value, 0);
@@ -204,21 +239,20 @@ function habitsWater(p, today) {
   const meter = (label, value, max, text) => `<div class="meter"><div class="row spread small"><span>${label}</span><b>${text}</b></div>
     <div class="bar" role="meter" aria-valuenow="${value}" aria-valuemin="0" aria-valuemax="${max}" aria-label="${esc(label)}"><i style="width:${Math.min(100, (value / max) * 100)}%"></i></div></div>`;
   return card('Gewohnheiten & Trinken', '', `<div class="stack">
-    ${meter('🌱 Gewohnheit des Tages (30 Tage)', habits, 30, `${habits} / 30 Tage`)}
-    ${meter('💧 Gläser Wasser pro Tag (Ø 7 Tage)', avgWater, goal, `${avgWater} / ${goal}`)}
+    ${meter('Gewohnheit des Tages (30 Tage)', habits, 30, `${habits} / 30 Tage`)}
+    ${meter('Gläser Wasser pro Tag (Ø 7 Tage)', avgWater, goal, `${avgWater} / ${goal}`)}
   </div>`);
 }
 
 function weight(p) {
   const w = p.logs?.weight || [];
   if (w.length < 2) return '';
-  const h = p.answers?.heightCm;
-  return card('Gewichtsverlauf', `${w.length} Einträge${h ? '' : ''}. Achte auf den Trend über Wochen, nicht auf einzelne Tage.`, lineChart(w, { unit: 'kg' }));
+  return card('Gewichtsverlauf', `${w.length} Einträge. Die Linie zeigt den Trend (Mittel der letzten 14 Tage) – einzelne Tage schwanken immer.`, lineChart(w, { unit: 'kg', trend: true }));
 }
 
 export function renderDashboard(p) {
   const today = toKey();
-  return `<div class="stack">${kpis(p, today)}${weeklyMinutes(p, today)}${heatmap(p, today)}${weight(p)}${focus(p, today)}${weekdays(p, today)}${feeling(p)}${habitsWater(p, today)}</div>`;
+  return `<div class="stack">${rings(p, today)}${kpis(p, today)}${weeklyMinutes(p, today)}${heatmap(p, today)}${weight(p)}${focus(p, today)}${weekdays(p, today)}${feeling(p)}${habitsWater(p, today)}</div>`;
 }
 
 // ---------- Tooltip-Ebene ----------
